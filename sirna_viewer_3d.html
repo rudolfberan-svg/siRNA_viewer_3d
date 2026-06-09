@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>siRNA 3D Structure Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+    --border: #30363d; --text: #e6edf3; --text2: #8b949e; --text3: #484f58;
+    --accent: #3fb950; --accent-light: #1a3a22;
+    --A: #ff7b54; --U: #58a6ff; --G: #7ee787; --C: #d2a8ff;
+    --match: #3fb950; --wobble: #d29922; --mismatch: #f85149;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+  header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 32px; display:flex; align-items:center; gap:14px; flex-shrink:0; }
+  header h1 { font-size:1.1rem; font-weight:600; }
+  .badge { font-size:0.62rem; font-weight:500; background:var(--accent-light); color:var(--accent); padding:2px 8px; border-radius:20px; }
+  header p { font-size:0.75rem; color:var(--text2); margin-left:auto; }
+
+  .main { display:flex; flex:1; overflow:hidden; }
+
+  .sidebar { width:280px; min-width:280px; background:var(--surface); border-right:1px solid var(--border); padding:20px 18px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; }
+
+  .field-group { display:flex; flex-direction:column; gap:6px; }
+  label { font-size:0.68rem; font-weight:600; letter-spacing:0.6px; color:var(--text2); text-transform:uppercase; }
+  .seq-hint { font-size:0.65rem; color:var(--text3); margin-top:-3px; }
+  textarea { font-family:'JetBrains Mono',monospace; font-size:0.75rem; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); resize:vertical; min-height:64px; line-height:1.6; transition:border-color 0.15s; letter-spacing:1.5px; }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  textarea.error { border-color:var(--mismatch); }
+  .error-msg { font-size:0.65rem; color:var(--mismatch); display:none; }
+  .error-msg.show { display:block; }
+
+  .btn { background:var(--accent); color:#000; border:none; border-radius:6px; padding:9px 16px; font-family:'Inter',sans-serif; font-size:0.82rem; font-weight:600; cursor:pointer; transition:opacity 0.15s,transform 0.1s; }
+  .btn:hover { opacity:0.85; }
+  .btn:active { transform:scale(0.98); }
+  .btn-ghost { background:transparent; color:var(--text2); border:1px solid var(--border); font-weight:400; }
+  .btn-ghost:hover { background:var(--surface2); opacity:1; }
+  .btn-row { display:flex; gap:8px; }
+
+  .stats-box { background:var(--surface2); border-radius:6px; padding:10px 12px; flex-direction:column; gap:5px; display:none; }
+  .stats-box.show { display:flex; }
+  .stat-row { display:flex; justify-content:space-between; font-size:0.72rem; }
+  .stat-label { color:var(--text2); }
+  .stat-value { font-weight:600; font-family:'JetBrains Mono',monospace; color:var(--text); }
+  .stat-value.good { color:var(--match); }
+  .stat-value.warn { color:var(--wobble); }
+  .stat-value.bad { color:var(--mismatch); }
+
+  .legend { border-top:1px solid var(--border); padding-top:14px; display:flex; flex-direction:column; gap:8px; }
+  .legend-title { font-size:0.65rem; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; }
+  .legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  .legend-item { display:flex; align-items:center; gap:5px; font-size:0.68rem; color:var(--text2); }
+  .legend-dot { width:14px; height:14px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:0.55rem; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .legend-line { display:flex; align-items:center; gap:6px; font-size:0.68rem; color:var(--text2); }
+  .line-s { width:20px; height:3px; border-radius:2px; }
+
+  .controls-hint { font-size:0.65rem; color:var(--text3); line-height:1.6; border-top:1px solid var(--border); padding-top:12px; }
+  /* A-form helix analysis */
+  .aform-panel { border-top:1px solid var(--border); padding-top:14px; display:none; flex-direction:column; gap:10px; }
+  .aform-panel.show { display:flex; }
+  .aform-sec-title { font-size:0.68rem; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; }
+  .aform-verdict { border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:10px; }
+  .aform-verdict.yes { background:#0f2e14; border:1px solid #2d6a4f; }
+  .aform-verdict.likely { background:#2a200a; border:1px solid #6a4f0a; }
+  .aform-verdict.unlikely { background:#2e0f0f; border:1px solid #6a2020; }
+  .verdict-icon { font-size:1.4rem; flex-shrink:0; }
+  .verdict-text { display:flex; flex-direction:column; gap:2px; }
+  .verdict-label { font-size:0.82rem; font-weight:600; }
+  .verdict-label.yes { color:#3fb950; }
+  .verdict-label.likely { color:#d29922; }
+  .verdict-label.unlikely { color:#f85149; }
+  .verdict-sub { font-size:0.65rem; color:var(--text2); line-height:1.4; }
+  .gauge-wrap { display:flex; flex-direction:column; gap:4px; }
+  .gauge-label-row { display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text3); }
+  .gauge-track { height:7px; background:var(--surface2); border-radius:4px; overflow:hidden; }
+  .gauge-fill { height:100%; border-radius:4px; transition:width 0.6s ease; }
+  .criterion { display:flex; align-items:flex-start; gap:7px; font-size:0.68rem; line-height:1.4; padding:5px 0; border-bottom:1px solid var(--border); }
+  .criterion:last-child { border-bottom:none; }
+  .crit-icon { font-size:0.8rem; flex-shrink:0; margin-top:1px; }
+  .crit-body { display:flex; flex-direction:column; gap:1px; flex:1; }
+  .crit-name { color:var(--text); font-weight:500; }
+  .crit-detail { color:var(--text2); font-size:0.63rem; }
+
+  /* 3D viewport */
+  .viewport { flex:1; position:relative; background:#070b10; }
+  #three-canvas { display:block; width:100%; height:100%; }
+
+  .empty-state { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text3); gap:10px; pointer-events:none; }
+  .empty-icon { font-size:3.5rem; opacity:0.3; }
+  .empty-state h2 { font-size:0.95rem; font-weight:500; color:var(--text2); }
+  .empty-state p { font-size:0.75rem; max-width:240px; text-align:center; line-height:1.6; }
+
+  .view-controls { position:absolute; bottom:18px; right:18px; display:flex; flex-direction:column; gap:6px; }
+  .view-btn { background:rgba(22,27,34,0.85); border:1px solid var(--border); color:var(--text2); width:34px; height:34px; border-radius:6px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:color 0.15s,background 0.15s; backdrop-filter:blur(4px); }
+  .view-btn:hover { color:var(--text); background:rgba(33,38,45,0.95); }
+
+  /* Custom right-click context menu */
+  .ctx-menu {
+    position: fixed;
+    background: rgba(22,27,34,0.97);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    z-index: 9999;
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 180px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  .ctx-menu.show { display: flex; }
+  .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .ctx-item:hover { background: var(--surface2); }
+  .ctx-item .ctx-icon { font-size: 0.9rem; width: 16px; text-align: center; }
+  .ctx-item .ctx-label { flex: 1; }
+  .ctx-item .ctx-hint { font-size: 0.65rem; color: var(--text3); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+  .ctx-feedback { font-size: 0.68rem; color: var(--accent); padding: 4px 12px; display: none; }
+  .ctx-feedback.show { display: block; }
+  .rotate-btn { color:var(--accent); border-color:var(--accent); font-size:1.2rem; }
+  .rotate-btn:hover { background:rgba(63,185,80,0.15); color:var(--accent); }
+  /* Reference helix inset */
+  .helix-inset {
+    position: absolute;
+    bottom: 18px;
+    left: -18px;
+    background: rgba(13,17,23,0.88);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px 8px;
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 10;
+  }
+  .helix-inset-title {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+  .helix-inset-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .helix-inset-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .helix-inset-label {
+    font-size: 0.6rem;
+    color: var(--text2);
+    letter-spacing: 0.3px;
+    line-height: 1.3;
+    text-align: center;
+  }
+  .helix-inset-label strong {
+    color: var(--text);
+    display: block;
+    font-size: 0.68rem;
+  }
+  canvas.mini-canvas {
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+
+
+  .tooltip { position:absolute; top:14px; left:50%; transform:translateX(-50%); background:rgba(22,27,34,0.92); border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-size:0.72rem; color:var(--text2); pointer-events:none; display:none; backdrop-filter:blur(4px); }
+  .tooltip.show { display:block; }
+
+  .strand-legend { position:absolute; top:14px; right:14px; background:rgba(22,27,34,0.88); border:1px solid var(--border); border-radius:8px; padding:10px 14px; display:none; flex-direction:column; gap:6px; backdrop-filter:blur(4px); }
+  .strand-legend.show { display:flex; }
+  .sl-item { display:flex; align-items:center; gap:8px; font-size:0.7rem; color:var(--text2); }
+  .sl-swatch { width:28px; height:5px; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>siRNA 3D Structure Viewer</h1>
+  <span class="badge">3D · Ribbons & Tubes</span>
+  <p>Drag to rotate · Scroll to zoom · Right-drag to pan</p>
+</header>
+
+<div class="main">
+  <aside class="sidebar">
+    <div class="field-group">
+      <label>siRNA Antisense</label>
+      <div class="seq-hint">5′ → 3′ &nbsp;|&nbsp; A U G C only</div>
+      <textarea id="antisense" placeholder="UUUGAAGUAUGUUUCAAGG" spellcheck="false"></textarea>
+      <div class="error-msg" id="err-antisense">Use only A, U, G, C</div>
+    </div>
+    <div class="field-group">
+      <label>Target mRNA</label>
+      <div class="seq-hint">5′ → 3′ &nbsp;|&nbsp; A U G C only</div>
+      <textarea id="mrna" placeholder="CCUUGAAACAUACUUCAAA" spellcheck="false"></textarea>
+      <div class="error-msg" id="err-mrna">Use only A, U, G, C</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="visualize()">Build 3D Structure</button>
+      <button class="btn btn-ghost" onclick="loadExample()">Example</button>
+    </div>
+
+    <div class="stats-box" id="stats-box">
+      <div class="stat-row"><span class="stat-label">siRNA length</span><span class="stat-value" id="stat-len">—</span></div>
+      <div class="stat-row"><span class="stat-label">Watson-Crick pairs</span><span class="stat-value good" id="stat-wc">—</span></div>
+      <div class="stat-row"><span class="stat-label">G·U wobble pairs</span><span class="stat-value warn" id="stat-gu">—</span></div>
+      <div class="stat-row"><span class="stat-label">Mismatches</span><span class="stat-value bad" id="stat-mm">—</span></div>
+      <div class="stat-row"><span class="stat-label">GC content</span><span class="stat-value" id="stat-gc">—</span></div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-title">Nucleotide Colors</div>
+      <div class="legend-grid">
+        <div class="legend-item"><div class="legend-dot" style="background:#3a1f10;color:var(--A)">A</div>Adenine</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0e2040;color:var(--U)">U</div>Uracil</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0f2e14;color:var(--G)">G</div>Guanine</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2a1a40;color:var(--C)">C</div>Cytosine</div>
+      </div>
+      <div class="legend-title" style="margin-top:4px">Base Pair Rungs</div>
+      <div class="legend-line"><div class="line-s" style="background:var(--match)"></div>Watson-Crick (A·U, G·C)</div>
+      <div class="legend-line"><div class="line-s" style="background:repeating-linear-gradient(90deg,#f0c040 0,#f0c040 4px,transparent 4px,transparent 8px)"></div>G·U Wobble (dashed)</div>
+      <div class="legend-line"><div class="line-s" style="background:var(--mismatch);opacity:0.5"></div>Mismatch</div>
+    </div>
+
+    <div class="controls-hint">
+      <strong style="color:var(--text2)">Navigation</strong><br>
+      Left-drag · rotate &nbsp;|&nbsp; Scroll · zoom<br>
+      Right-drag · pan &nbsp;|&nbsp; Double-click · reset
+    </div>
+
+    <div class="aform-panel" id="aform-panel">
+      <div class="aform-sec-title">A-form Helix Analysis</div>
+      <div class="aform-verdict" id="aform-verdict">
+        <div class="verdict-icon" id="aform-icon">🧬</div>
+        <div class="verdict-text">
+          <div class="verdict-label" id="aform-label">—</div>
+          <div class="verdict-sub" id="aform-sub">—</div>
+        </div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-label-row"><span>A-form likelihood</span><span id="aform-score-label">0%</span></div>
+        <div class="gauge-track"><div class="gauge-fill" id="aform-gauge" style="width:0%"></div></div>
+      </div>
+      <div id="aform-criteria"></div>
+    </div>
+  </aside>
+
+  <div class="viewport" id="viewport">
+    <canvas id="three-canvas"></canvas>
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">🧬</div>
+      <h2>Enter sequences to begin</h2>
+      <p>Provide the siRNA antisense and mRNA sequences, then click Build 3D Structure.</p>
+    </div>
+    <div class="strand-legend" id="strand-legend">
+      <div class="sl-item"><div class="sl-swatch" style="background:#58a6ff"></div>mRNA ribbon</div>
+      <div class="sl-item"><div class="sl-swatch" style="background:#f0883e"></div>siRNA antisense ribbon</div>
+      <div class="sl-item"><div class="sl-swatch" style="background:#3fb950;height:3px"></div>Base pair rungs</div>
+    </div>
+
+    <div class="helix-inset" id="helix-inset">
+      <div class="helix-inset-title">Reference Helices</div>
+      <div class="helix-inset-row">
+        <div class="helix-inset-item">
+          <canvas class="mini-canvas" id="canvas-aform" width="110" height="150"></canvas>
+          <div class="helix-inset-label"><strong>A-form</strong>11 bp/turn · wide</div>
+        </div>
+        <div class="helix-inset-item">
+          <canvas class="mini-canvas" id="canvas-bform" width="110" height="150"></canvas>
+          <div class="helix-inset-label"><strong>B-form</strong>10 bp/turn · narrow</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ctx-menu" id="ctx-menu">
+      <div class="ctx-item" id="ctx-copy" onclick="copyCanvasImage()">
+        <span class="ctx-icon">📋</span>
+        <span class="ctx-label">Copy image</span>
+        <span class="ctx-hint">Ctrl+V in PowerPoint</span>
+      </div>
+      <div class="ctx-item" onclick="downloadCanvasImage()">
+        <span class="ctx-icon">⬇</span>
+        <span class="ctx-label">Save as PNG</span>
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" onclick="resetCamera(); closeCtxMenu()">
+        <span class="ctx-icon">⟳</span>
+        <span class="ctx-label">Reset view</span>
+      </div>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+    <div class="view-controls">
+      <button class="view-btn" title="Reset view" onclick="resetCamera()">⟳</button>
+      <button class="view-btn" title="Top view" onclick="topView()">⊤</button>
+      <button class="view-btn" title="Side view" onclick="sideView()">◫</button>
+      <button class="view-btn rotate-btn" title="Rotate 45°" onclick="rotateStep()">↻</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── Sequence utilities ──
+const BASE_COLORS = {
+  A: 0xff7b54, U: 0x58a6ff, G: 0x7ee787, C: 0xd2a8ff
+};
+const BASE_COLORS_EMISSIVE = {
+  A: 0x3a1008, U: 0x081830, G: 0x0a2010, C: 0x1a0830
+};
+const BACKBONE_MRNA   = 0x3a6bd4;
+const BACKBONE_SIRNA  = 0xc06020;
+const PAIR_WC_COLOR   = 0x3fb950;
+const PAIR_GU_COLOR   = 0xd29922;
+const PAIR_MM_COLOR   = 0x444c56;
+
+function clean(s) { return s.trim().toUpperCase().replace(/\s/g,''); }
+function validate(s) { return /^[AUGCaugc]+$/.test(s.trim()); }
+function complement(b) { return {A:'U',U:'A',G:'C',C:'G'}[b]||'?'; }
+function pairType(a,b) {
+  const wc = {AU:1,UA:1,GC:1,CG:1};
+  if (wc[a+b]) return 'wc';
+  if ((a==='G'&&b==='U')||(a==='U'&&b==='G')) return 'wobble';
+  return 'mismatch';
+}
+
+function findAlignment(asRevArr, mrna) {
+  const asLen = asRevArr.length, mLen = mrna.length;
+  if (mLen < asLen) return 0;
+  let best=0, bestScore=-1;
+  for (let s=0; s<=mLen-asLen; s++) {
+    let score=0;
+    for (let i=0; i<asLen; i++) {
+      const t = pairType(asRevArr[i], mrna[s+i]);
+      score += t==='wc'?2:t==='wobble'?1:0;
+    }
+    if (score>bestScore){bestScore=score;best=s;}
+  }
+  return best;
+}
+
+function loadExample() {
+  document.getElementById('antisense').value = 'UUUGAAGUAUGUUUCAAGG';
+  document.getElementById('mrna').value      = 'CCUUGAAACAUACUUCAAAGUU';
+  visualize();
+}
+
+// ── Three.js globals ──
+let scene, camera, renderer, helixGroup;
+let isDragging=false, isRightDrag=false, lastMouse={x:0,y:0};
+let rotTarget = 0;
+let camTheta=0.3, camPhi=1.1, camR=28, camTarget=new THREE.Vector3(0,0,0);
+let animFrame;
+
+function initThree() {
+  const vp = document.getElementById('viewport');
+  const canvas = document.getElementById('three-canvas');
+
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  resize();
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x070b10);
+  scene.fog = new THREE.FogExp2(0x070b10, 0.018);
+
+  // Camera
+  camera = new THREE.PerspectiveCamera(45, vp.clientWidth/vp.clientHeight, 0.1, 200);
+  updateCamera();
+
+  // Lights
+  const amb = new THREE.AmbientLight(0xffffff, 0.4);
+  scene.add(amb);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(10, 20, 15);
+  dir.castShadow = true;
+  scene.add(dir);
+  const fill = new THREE.DirectionalLight(0x8ab4ff, 0.3);
+  fill.position.set(-10,-5,-10);
+  scene.add(fill);
+  const rim = new THREE.PointLight(0x3fb950, 0.6, 60);
+  rim.position.set(0, 20, 0);
+  scene.add(rim);
+
+  // Events
+  canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseup', ()=>isDragging=false);
+  canvas.addEventListener('mouseleave', ()=>isDragging=false);
+  canvas.addEventListener('wheel', onWheel, {passive:true});
+  canvas.addEventListener('dblclick', resetCamera);
+  canvas.addEventListener('contextmenu', onContextMenu);
+  window.addEventListener('resize', resize);
+
+  renderLoop();
+}
+
+function resize() {
+  const vp = document.getElementById('viewport');
+  renderer.setSize(vp.clientWidth, vp.clientHeight);
+  if (camera) camera.aspect = vp.clientWidth/vp.clientHeight, camera.updateProjectionMatrix();
+}
+
+function updateCamera() {
+  const x = camR * Math.sin(camPhi) * Math.sin(camTheta);
+  const y = camR * Math.cos(camPhi);
+  const z = camR * Math.sin(camPhi) * Math.cos(camTheta);
+  camera.position.set(
+    camTarget.x + x,
+    camTarget.y + y,
+    camTarget.z + z
+  );
+  camera.lookAt(camTarget);
+}
+
+function onMouseDown(e) {
+  isDragging=true;
+  isRightDrag = e.button===2;
+  lastMouse={x:e.clientX,y:e.clientY};
+}
+function onMouseMove(e) {
+  if (!isDragging) return;
+  const dx=(e.clientX-lastMouse.x)*0.005;
+  const dy=(e.clientY-lastMouse.y)*0.005;
+  lastMouse={x:e.clientX,y:e.clientY};
+  if (isRightDrag) {
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    camera.getWorldDirection(right);
+    right.cross(camera.up).normalize();
+    up.copy(camera.up).normalize();
+    camTarget.addScaledVector(right, -dx*camR*0.3);
+    camTarget.addScaledVector(up, dy*camR*0.3);
+  } else {
+    camTheta -= dx;
+    camPhi = Math.max(0.15, Math.min(Math.PI-0.15, camPhi+dy));
+  }
+  updateCamera();
+}
+function onWheel(e) {
+  camR = Math.max(5, Math.min(80, camR + e.deltaY*0.04));
+  updateCamera();
+}
+function resetCamera() {
+  camTheta=0.3; camPhi=1.1; camR=28;
+  camTarget.set(helixGroup ? 4 : 0, 0, 0);
+  updateCamera();
+}
+function topView() { camPhi=0.18; updateCamera(); }
+function sideView() { camPhi=Math.PI/2; camTheta=0; updateCamera(); }
+function rotateStep() { rotTarget += Math.PI / 4; }
+
+function renderLoop() {
+  animFrame = requestAnimationFrame(renderLoop);
+  // Smooth animated step-rotation
+  if (helixGroup && Math.abs(rotTarget - helixGroup.rotation.y) > 0.001) {
+    helixGroup.rotation.y += (rotTarget - helixGroup.rotation.y) * 0.12;
+  } else if (helixGroup) {
+    helixGroup.rotation.y = rotTarget;
+  }
+  renderer.render(scene, camera);
+}
+
+// ── A-form RNA helix parameters ──
+const RISE   = 0.9;                        // rise per base pair (units)
+const TWIST  = (32.7 * Math.PI) / 180;    // rotation per bp (radians)
+const RADIUS = 1.9;                        // helix radius
+
+// ── Low-level geometry helpers ──
+function makeCylinder(from, to, radius, color, opacity) {
+  const dir = new THREE.Vector3().subVectors(to, from);
+  const len = dir.length();
+  if (len < 0.001) return null;
+  const geo = new THREE.CylinderGeometry(radius, radius, len, 12, 1);
+  const mat = new THREE.MeshStandardMaterial({
+    color, roughness:0.4, metalness:0.05,
+    transparent: opacity < 1, opacity: opacity ?? 1
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5));
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+  return mesh;
+}
+
+function makeSphere(pos, r, color) {
+  const geo = new THREE.SphereGeometry(r, 16, 12);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness:0.35, metalness:0.1 });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.copy(pos);
+  return m;
+}
+
+// Build a smooth extruded ribbon along an array of {pos, normal, binormal} frames
+function makeRibbon(frames, halfWidth, thickness, color) {
+  const positions = [];
+  const normals   = [];
+  const indices   = [];
+  const n = frames.length;
+
+  // For each frame, emit 4 vertices (top-left, top-right, bot-left, bot-right)
+  for (let i = 0; i < n; i++) {
+    const { pos, right, up } = frames[i];
+    const hw = halfWidth;
+    const ht = thickness * 0.5;
+    // top face
+    positions.push(
+      pos.x + right.x*hw + up.x*ht, pos.y + right.y*hw + up.y*ht, pos.z + right.z*hw + up.z*ht,
+      pos.x - right.x*hw + up.x*ht, pos.y - right.y*hw + up.y*ht, pos.z - right.z*hw + up.z*ht,
+      // bottom face
+      pos.x + right.x*hw - up.x*ht, pos.y + right.y*hw - up.y*ht, pos.z + right.z*hw - up.z*ht,
+      pos.x - right.x*hw - up.x*ht, pos.y - right.y*hw - up.y*ht, pos.z - right.z*hw - up.z*ht,
+    );
+    // normals (approximate)
+    for (let k=0; k<2; k++) normals.push(up.x, up.y, up.z);
+    for (let k=0; k<2; k++) normals.push(-up.x, -up.y, -up.z);
+  }
+
+  // Quad strip — top face, bottom face, and side edges
+  for (let i = 0; i < n-1; i++) {
+    const b = i * 4;
+    const b2 = b + 4;
+    // top
+    indices.push(b, b2, b+1,  b+1, b2, b2+1);
+    // bottom
+    indices.push(b+2, b+3, b2+2,  b+3, b2+3, b2+2);
+    // left side
+    indices.push(b+1, b2+1, b+3,  b+3, b2+1, b2+3);
+    // right side
+    indices.push(b, b+2, b2,  b+2, b2+2, b2);
+  }
+  // end caps
+  indices.push(0,1,2, 1,3,2);
+  const L = (n-1)*4;
+  indices.push(L, L+2, L+1, L+1, L+2, L+3);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({ color, roughness:0.3, metalness:0.08, side: THREE.DoubleSide });
+  return new THREE.Mesh(geo, mat);
+}
+
+// Build a smooth tube along a path of Vector3 points
+function makeTube(points, radius, color, opacity) {
+  if (points.length < 2) return null;
+  const curve = new THREE.CatmullRomCurve3(points);
+  const segs  = Math.max(points.length * 4, 20);
+  const geo   = new THREE.TubeGeometry(curve, segs, radius, 10, false);
+  const mat   = new THREE.MeshStandardMaterial({
+    color, roughness:0.4, metalness:0.05,
+    transparent: opacity < 1, opacity: opacity ?? 1
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+// ── Helix math ──
+function helixPos(idx, angleOffset, yOffset) {
+  const angle = idx * TWIST + angleOffset;
+  const y = idx * RISE + yOffset;
+  return new THREE.Vector3(RADIUS * Math.cos(angle), y, RADIUS * Math.sin(angle));
+}
+
+// For a helix point, compute the ribbon frame (right = tangential-ish, up = outward from axis + slight normal)
+function helixFrame(idx, angleOffset, yOffset) {
+  const pos   = helixPos(idx, angleOffset, yOffset);
+  // tangent along helix
+  const pos1  = helixPos(idx + 0.01, angleOffset, yOffset);
+  const tangent = pos1.clone().sub(pos).normalize();
+  // outward from helix axis (radial)
+  const axial = new THREE.Vector3(0, 1, 0);
+  // right = cross(tangent, axial), then re-orthogonalize
+  const right = new THREE.Vector3().crossVectors(tangent, axial).normalize();
+  // up = cross(right, tangent)
+  const up    = new THREE.Vector3().crossVectors(right, tangent).normalize();
+  return { pos, right, up, tangent };
+}
+
+// ── Main visualize function ──
+function visualize() {
+  const asRaw = document.getElementById('antisense').value;
+  const mRaw  = document.getElementById('mrna').value;
+  let ok = true;
+  ['antisense','mrna'].forEach(id => {
+    const el  = document.getElementById(id);
+    const val = id === 'antisense' ? asRaw : mRaw;
+    const err = document.getElementById('err-' + id);
+    if (!validate(val)) { el.classList.add('error'); err.classList.add('show'); ok = false; }
+    else { el.classList.remove('error'); err.classList.remove('show'); }
+  });
+  if (!ok) return;
+
+  const antisense  = clean(asRaw);
+  const mrna       = clean(mRaw);
+  const asRevArr   = antisense.split('').reverse(); // antisense read 3'→5'
+  const alignStart = findAlignment(asRevArr, mrna);
+  const asLen      = antisense.length;
+  const mLen       = mrna.length;
+
+  // Pair data (antisense index i ↔ mRNA index alignStart+i)
+  const pairs = asRevArr.map((base, i) => {
+    const mIdx  = alignStart + i;
+    const mBase = mIdx < mLen ? mrna[mIdx] : null;
+    return { asBase: base, mBase, type: mBase ? pairType(base, mBase) : 'none' };
+  });
+
+  // Stats
+  const wc = pairs.filter(p => p.type === 'wc').length;
+  const gu = pairs.filter(p => p.type === 'wobble').length;
+  const mm = pairs.filter(p => p.type === 'mismatch').length;
+  const gc = antisense.split('').filter(b => b==='G'||b==='C').length;
+  document.getElementById('stat-len').textContent = asLen + ' nt';
+  document.getElementById('stat-wc').textContent  = wc;
+  document.getElementById('stat-gu').textContent  = gu;
+  document.getElementById('stat-mm').textContent  = mm;
+  document.getElementById('stat-gc').textContent  = Math.round(100*gc/asLen) + '%';
+  document.getElementById('stats-box').classList.add('show');
+
+  if (helixGroup) scene.remove(helixGroup);
+  helixGroup = new THREE.Group();
+  rotTarget = 0;
+
+  const yOffset = -(asLen * RISE) / 2;
+
+  // ── Helper: position on each strand ──
+  // Strand A = mRNA, offset 0
+  // Strand B = antisense, offset π (antiparallel opposite groove)
+  const AO = 0, BO = Math.PI;
+
+  const posA = i => helixPos(i, AO, yOffset);
+  const posB = i => helixPos(i, BO, yOffset);
+
+  // ── 1. Ribbon for mRNA backbone ──
+  {
+    const frames = [];
+    for (let i = 0; i < mLen; i++) {
+      frames.push(helixFrame(i, AO, yOffset));
+    }
+    // Smooth by subsampling with more points
+    const smoothFrames = [];
+    for (let t = 0; t <= (mLen-1)*8; t++) {
+      const fi = t / 8;
+      const i0 = Math.min(Math.floor(fi), mLen-2);
+      const frac = fi - i0;
+      const f0 = helixFrame(i0,       AO, yOffset);
+      const f1 = helixFrame(i0+1,     AO, yOffset);
+      smoothFrames.push({
+        pos:   f0.pos.clone().lerp(f1.pos, frac),
+        right: f0.right.clone().lerp(f1.right, frac).normalize(),
+        up:    f0.up.clone().lerp(f1.up, frac).normalize()
+      });
+    }
+    const ribbon = makeRibbon(smoothFrames, 0.38, 0.10, BACKBONE_MRNA);
+    helixGroup.add(ribbon);
+  }
+
+  // ── 2. Ribbon for antisense backbone (only over aligned region) ──
+  {
+    const smoothFrames = [];
+    const startIdx = alignStart, endIdx = alignStart + asLen - 1;
+    for (let t = 0; t <= (asLen-1)*8; t++) {
+      const fi = startIdx + t / 8;
+      const i0 = Math.min(Math.floor(fi), endIdx - 1);
+      const frac = fi - i0;
+      const f0 = helixFrame(i0,   BO, yOffset);
+      const f1 = helixFrame(i0+1, BO, yOffset);
+      smoothFrames.push({
+        pos:   f0.pos.clone().lerp(f1.pos, frac),
+        right: f0.right.clone().lerp(f1.right, frac).normalize(),
+        up:    f0.up.clone().lerp(f1.up, frac).normalize()
+      });
+    }
+    const ribbon = makeRibbon(smoothFrames, 0.38, 0.10, BACKBONE_SIRNA);
+    helixGroup.add(ribbon);
+  }
+
+  // ── 3. Nucleotide base tubes (backbone → helix axis) for mRNA ──
+  for (let i = 0; i < mLen; i++) {
+    const base  = mrna[i];
+    const color = BASE_COLORS[base] || 0xffffff;
+    const from  = posA(i);
+    const axis  = new THREE.Vector3(0, from.y, 0); // project to axis
+    // Draw tube from backbone point inward ~60% toward axis
+    const inner = from.clone().lerp(axis, 0.55);
+    const tube  = makeCylinder(from, inner, 0.13, color, 1.0);
+    if (tube) helixGroup.add(tube);
+    // Nucleotide cap sphere
+    helixGroup.add(makeSphere(inner, 0.2, color));
+  }
+
+  // ── 4. Nucleotide base tubes for antisense ──
+  for (let i = 0; i < asLen; i++) {
+    const base  = asRevArr[i];
+    const color = BASE_COLORS[base] || 0xffffff;
+    const gIdx  = alignStart + i;
+    const from  = posB(gIdx);
+    const axis  = new THREE.Vector3(0, from.y, 0);
+    const inner = from.clone().lerp(axis, 0.55);
+    const tube  = makeCylinder(from, inner, 0.13, color, 1.0);
+    if (tube) helixGroup.add(tube);
+    helixGroup.add(makeSphere(inner, 0.2, color));
+  }
+
+  // ── 5. Base pair rung tubes ──
+  // W-C: solid green cylinder | Wobble: dashed yellow segments | Mismatch: faint gray
+  for (let i = 0; i < asLen; i++) {
+    const p = pairs[i];
+    if (!p.mBase) continue;
+    const gIdx  = alignStart + i;
+    const fromA = posA(gIdx).clone().lerp(new THREE.Vector3(0, posA(gIdx).y, 0), 0.55);
+    const fromB = posB(gIdx).clone().lerp(new THREE.Vector3(0, posB(gIdx).y, 0), 0.55);
+
+    if (p.type === 'wobble') {
+      // Dashed yellow: 5 short cylinder segments with equal gaps
+      const DASH_N = 5;
+      const fullDir = fromB.clone().sub(fromA);
+      const fullLen = fullDir.length();
+      const unit    = fullDir.clone().normalize();
+      // total = DASH_N dashes + (DASH_N-1) gaps, dash == gap width
+      const segLen  = fullLen / (DASH_N * 2 - 1);
+      for (let d = 0; d < DASH_N; d++) {
+        const t0  = d * 2 * segLen;
+        const t1  = t0 + segLen;
+        const seg = makeCylinder(
+          fromA.clone().addScaledVector(unit, t0),
+          fromA.clone().addScaledVector(unit, Math.min(t1, fullLen)),
+          0.10, 0xf0c040, 0.92
+        );
+        if (seg) helixGroup.add(seg);
+      }
+    } else {
+      const color   = p.type === 'wc' ? PAIR_WC_COLOR : PAIR_MM_COLOR;
+      const opacity = p.type === 'mismatch' ? 0.22 : 0.82;
+      const rungR   = p.type === 'wc' ? 0.12 : 0.07;
+      const tube    = makeCylinder(fromA, fromB, rungR, color, opacity);
+      if (tube) helixGroup.add(tube);
+    }
+  }
+
+  // ── 6. End arrows (cones) on strand termini ──
+  function addArrow(pos, dir, color) {
+    const geo = new THREE.ConeGeometry(0.18, 0.5, 12);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness:0.35 });
+    const m   = new THREE.Mesh(geo, mat);
+    m.position.copy(pos);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+    helixGroup.add(m);
+  }
+
+  // mRNA: 5' start, 3' end
+  if (mLen > 1) {
+    const d5 = posA(0).clone().sub(posA(1)).normalize();
+    addArrow(posA(0).clone().addScaledVector(d5, 0.4), d5, 0x3a6bd4);
+    const d3 = posA(mLen-1).clone().sub(posA(mLen-2)).normalize();
+    addArrow(posA(mLen-1).clone().addScaledVector(d3, 0.4), d3, 0x2244aa);
+  }
+  // antisense: 3' at alignStart, 5' at alignStart+asLen-1
+  if (asLen > 1) {
+    const gS = alignStart, gE = alignStart + asLen - 1;
+    const dS = posB(gS).clone().sub(posB(gS+1)).normalize();
+    addArrow(posB(gS).clone().addScaledVector(dS, 0.4), dS, 0xc06020);
+    const dE = posB(gE).clone().sub(posB(gE-1)).normalize();
+    addArrow(posB(gE).clone().addScaledVector(dE, 0.4), dE, 0x804010);
+  }
+
+  // ── 7. Center and add to scene, offset right to clear the inset ──
+  const box    = new THREE.Box3().setFromObject(helixGroup);
+  const center = box.getCenter(new THREE.Vector3());
+  helixGroup.position.sub(center);
+  helixGroup.position.x += 4;   // shift right in world space
+  scene.add(helixGroup);
+
+  camR = Math.max(18, asLen * 0.7 + 12);
+  camTarget.set(4, 0, 0);        // point camera at the shifted position
+  updateCamera();
+
+
+  // ── A-form helix analysis ──
+  const aformAnalysis = analyzeAform(antisense, mrna, pairs, asLen);
+  renderAformPanel(aformAnalysis);
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('strand-legend').classList.add('show');
+}
+
+
+// ── A-form helix analysis ──
+// A-form RNA helix criteria (based on structural biology literature):
+//  1. All-RNA duplex (both strands RNA) — assumed here since input is U-based
+//  2. Sufficient duplex length (≥6 bp minimum; 19-21 bp is canonical siRNA)
+//  3. High Watson-Crick pair fraction (ideally ≥80%)
+//  4. No consecutive mismatches (≥2 in a row destabilize A-form)
+//  5. GC content 30–70% (very low GC → unstable; very high → rigid/misfolded)
+//  6. G·U wobble pairs are tolerated in A-form (minor distortion only)
+//  7. No long purine runs on one strand (≥5 consecutive purines = AA/GG stretches)
+//     can cause local geometry distortions
+//  8. Antisense sequence is all-RNA (U present, no T) — already validated
+//  Each criterion returns { pass: bool, weight: number, name, detail }
+
+function analyzeAform(antisense, mrna, pairs, asLen) {
+  const results = [];
+  let totalWeight = 0, passedWeight = 0;
+
+  function crit(name, pass, weight, detail) {
+    results.push({ name, pass, weight, detail });
+    totalWeight += weight;
+    if (pass) passedWeight += weight;
+  }
+
+  // 1. Duplex length
+  const minLen = 6, idealMin = 16, idealMax = 25;
+  const lenPass = asLen >= minLen;
+  const lenIdeal = asLen >= idealMin && asLen <= idealMax;
+  crit(
+    'Duplex length',
+    lenPass,
+    2,
+    asLen < minLen
+      ? `${asLen} nt — too short for stable A-form (min ~6 bp)`
+      : lenIdeal
+        ? `${asLen} nt — ideal range for siRNA A-form (16–25 nt)`
+        : `${asLen} nt — functional but outside canonical 16–25 nt range`
+  );
+
+  // 2. Watson-Crick pair fraction
+  const wcCount = pairs.filter(p => p.type === 'wc').length;
+  const wcFrac  = wcCount / pairs.length;
+  const wcPass  = wcFrac >= 0.75;
+  crit(
+    'Watson-Crick pairing',
+    wcPass,
+    3,
+    `${Math.round(wcFrac*100)}% W-C pairs — ${wcPass ? 'sufficient for stable A-form geometry' : 'too many mismatches; A-form helix destabilized'}`
+  );
+
+  // 3. No consecutive mismatches (≥2 in a row)
+  let maxConsecMM = 0, curMM = 0;
+  for (const p of pairs) {
+    if (p.type === 'mismatch') { curMM++; maxConsecMM = Math.max(maxConsecMM, curMM); }
+    else curMM = 0;
+  }
+  const noConsecMM = maxConsecMM < 2;
+  crit(
+    'No consecutive mismatches',
+    noConsecMM,
+    2,
+    maxConsecMM === 0
+      ? 'No mismatches — optimal backbone geometry'
+      : maxConsecMM === 1
+        ? '1 isolated mismatch — tolerated in A-form'
+        : `${maxConsecMM} consecutive mismatches — causes local helix unwinding`
+  );
+
+  // 4. GC content (antisense)
+  const gcCount = antisense.split('').filter(b => b==='G'||b==='C').length;
+  const gcPct   = gcCount / antisense.length;
+  const gcPass  = gcPct >= 0.30 && gcPct <= 0.70;
+  crit(
+    'GC content (30–70%)',
+    gcPass,
+    2,
+    `${Math.round(gcPct*100)}% GC — ${gcPct < 0.30 ? 'AU-rich; reduced stacking, helix may be unstable' : gcPct > 0.70 ? 'GC-rich; may over-stabilize and resist RISC unwinding' : 'good range for A-form thermodynamic stability'}`
+  );
+
+  // 5. G·U wobble fraction (tolerated but not dominant)
+  const guCount  = pairs.filter(p => p.type === 'wobble').length;
+  const guFrac   = guCount / pairs.length;
+  const guPass   = guFrac <= 0.30;
+  crit(
+    'G·U wobble content ≤30%',
+    guPass,
+    1,
+    guFrac === 0
+      ? 'No G·U wobbles — ideal Watson-Crick geometry throughout'
+      : guPass
+        ? `${Math.round(guFrac*100)}% G·U wobbles — tolerated; minor groove width retained`
+        : `${Math.round(guFrac*100)}% G·U wobbles — too many; cumulative widening of minor groove`
+  );
+
+  // 6. No long purine runs (≥5 purines in a row on antisense)
+  const purines = 'AG';
+  let maxPuRun = 0, curPu = 0;
+  for (const b of antisense) {
+    if (purines.includes(b)) { curPu++; maxPuRun = Math.max(maxPuRun, curPu); }
+    else curPu = 0;
+  }
+  const noPuRun = maxPuRun < 5;
+  crit(
+    'No long purine runs (≥5)',
+    noPuRun,
+    1,
+    maxPuRun < 3
+      ? 'No extended purine tracts — backbone torsion angles remain A-form'
+      : maxPuRun < 5
+        ? `Run of ${maxPuRun} purines — minor; likely still A-form`
+        : `Run of ${maxPuRun} purines — may locally shift toward B-form geometry`
+  );
+
+  // 7. Both strands RNA (no DNA T bases) — validated upstream, always passes
+  crit('All-RNA duplex (U not T)', true, 2, 'RNA:RNA duplex — C3&#39;-endo sugar pucker strongly favors A-form over B-form');
+
+  // Score
+  const score = totalWeight > 0 ? passedWeight / totalWeight : 0;
+  let verdict, cls, icon;
+  if (score >= 0.82) {
+    verdict = 'A-form helix: Yes';
+    cls = 'yes'; icon = '✅';
+  } else if (score >= 0.55) {
+    verdict = 'A-form helix: Likely';
+    cls = 'likely'; icon = '⚠️';
+  } else {
+    verdict = 'A-form helix: Unlikely';
+    cls = 'unlikely'; icon = '❌';
+  }
+
+  const subtext = score >= 0.82
+    ? 'Sequence properties support stable A-form RNA duplex geometry.'
+    : score >= 0.55
+      ? 'Mostly A-form, but some criteria suggest local distortions.'
+      : 'Multiple criteria fail; helix likely adopts non-canonical geometry.';
+
+  return { results, score, verdict, cls, icon, subtext };
+}
+
+function renderAformPanel(analysis) {
+  const panel = document.getElementById('aform-panel');
+  panel.classList.add('show');
+
+  const verdict = document.getElementById('aform-verdict');
+  verdict.className = 'aform-verdict ' + analysis.cls;
+  document.getElementById('aform-icon').textContent  = analysis.icon;
+  document.getElementById('aform-label').textContent = analysis.verdict;
+  document.getElementById('aform-label').className   = 'verdict-label ' + analysis.cls;
+  document.getElementById('aform-sub').textContent   = analysis.subtext;
+
+  const pct = Math.round(analysis.score * 100);
+  document.getElementById('aform-score-label').textContent = pct + '%';
+  const fill = document.getElementById('aform-gauge');
+  fill.style.width = pct + '%';
+  fill.style.background = analysis.cls === 'yes' ? '#3fb950' : analysis.cls === 'likely' ? '#d29922' : '#f85149';
+
+  const container = document.getElementById('aform-criteria');
+  container.innerHTML = '';
+  for (const r of analysis.results) {
+    const div = document.createElement('div');
+    div.className = 'criterion';
+    div.innerHTML =
+      '<span class="crit-icon">' + (r.pass ? '✓' : '✗') + '</span>' +
+      '<div class="crit-body">' +
+        '<div class="crit-name" style="color:' + (r.pass ? '#3fb950' : '#f85149') + '">' + r.name + '</div>' +
+        '<div class="crit-detail">' + r.detail + '</div>' +
+      '</div>';
+    container.appendChild(div);
+  }
+}
+
+
+// ── Mini reference helix renderers ──
+let miniRendererA, miniRendererB, miniSceneA, miniSceneB, miniCamA, miniCamB;
+let miniGroupA, miniGroupB;
+let miniRotA = 0, miniRotB = 0;
+
+function buildReferenceHelix(scene, params) {
+  // params: { rise, twist, radius, bpCount, strandColorA, strandColorB, baseOffset }
+  const { rise, twist, radius, bpCount, strandColorA, strandColorB, baseOffset } = params;
+  const group = new THREE.Group();
+  const yOff  = -(bpCount * rise) / 2;
+  const AO = 0, BO = Math.PI + (baseOffset || 0);
+
+  function hPos(idx, ao) {
+    const a = idx * twist + ao;
+    return new THREE.Vector3(radius * Math.cos(a), idx * rise + yOff, radius * Math.sin(a));
+  }
+  function hFrame(idx, ao) {
+    const pos  = hPos(idx, ao);
+    const pos1 = new THREE.Vector3(
+      radius * Math.cos((idx+0.01)*twist + ao),
+      (idx+0.01)*rise + yOff,
+      radius * Math.sin((idx+0.01)*twist + ao)
+    );
+    const tangent = pos1.clone().sub(pos).normalize();
+    const axial   = new THREE.Vector3(0,1,0);
+    const right   = new THREE.Vector3().crossVectors(tangent, axial).normalize();
+    const up      = new THREE.Vector3().crossVectors(right, tangent).normalize();
+    return { pos, right, up };
+  }
+
+  // Build ribbon for strand A
+  function buildRibbon(ao, color) {
+    const frames = [];
+    for (let t = 0; t <= (bpCount-1)*8; t++) {
+      const fi = t/8;
+      const i0 = Math.min(Math.floor(fi), bpCount-2);
+      const fr = fi-i0;
+      const f0 = hFrame(i0, ao), f1 = hFrame(i0+1, ao);
+      frames.push({
+        pos:   f0.pos.clone().lerp(f1.pos, fr),
+        right: f0.right.clone().lerp(f1.right, fr).normalize(),
+        up:    f0.up.clone().lerp(f1.up, fr).normalize()
+      });
+    }
+    return makeRibbon(frames, 0.30, 0.09, color);
+  }
+
+  group.add(buildRibbon(AO, strandColorA));
+  group.add(buildRibbon(BO, strandColorB));
+
+  // Base tubes and rungs
+  for (let i = 0; i < bpCount; i++) {
+    const pA   = hPos(i, AO);
+    const pB   = hPos(i, BO);
+    const axis = new THREE.Vector3(0, pA.y, 0);
+    // strand A nucleotide stub
+    const iA = pA.clone().lerp(axis, 0.5);
+    const cA = makeCylinder(pA, iA, 0.10, 0x7ee787, 1.0);
+    if (cA) group.add(cA);
+    group.add(makeSphere(iA, 0.16, 0x7ee787));
+    // strand B nucleotide stub
+    const iB = pB.clone().lerp(axis, 0.5);
+    const cB = makeCylinder(pB, iB, 0.10, 0x58a6ff, 1.0);
+    if (cB) group.add(cB);
+    group.add(makeSphere(iB, 0.16, 0x58a6ff));
+    // rung
+    const rung = makeCylinder(iA, iB, 0.08, 0x3fb950, 0.75);
+    if (rung) group.add(rung);
+  }
+
+  scene.add(group);
+  return group;
+}
+
+function initMiniRenderers() {
+  const canvA = document.getElementById('canvas-aform');
+  const canvB = document.getElementById('canvas-bform');
+  if (!canvA || !canvB) return;
+
+  // Shared light helper
+  function addLights(sc) {
+    sc.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const d = new THREE.DirectionalLight(0xffffff, 0.9);
+    d.position.set(5, 10, 8);
+    sc.add(d);
+    const f = new THREE.DirectionalLight(0x8ab4ff, 0.3);
+    f.position.set(-5,-3,-5);
+    sc.add(f);
+  }
+
+  // ── A-form renderer ──
+  miniRendererA = new THREE.WebGLRenderer({ canvas: canvA, antialias: true, alpha: true });
+  miniRendererA.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  miniRendererA.setSize(110, 150);
+  miniSceneA = new THREE.Scene();
+  miniSceneA.background = new THREE.Color(0x0a0e14);
+  addLights(miniSceneA);
+  miniCamA = new THREE.PerspectiveCamera(40, 110/150, 0.1, 100);
+  miniCamA.position.set(7, 2, 7);
+  miniCamA.lookAt(0, 0, 0);
+  // A-form: wide helix, 11 bp/turn, small rise
+  miniGroupA = buildReferenceHelix(miniSceneA, {
+    rise: 0.80, twist: (32.7*Math.PI/180), radius: 1.7,
+    bpCount: 10, strandColorA: 0x3a6bd4, strandColorB: 0xc06020, baseOffset: 0
+  });
+
+  // ── B-form renderer ──
+  miniRendererB = new THREE.WebGLRenderer({ canvas: canvB, antialias: true, alpha: true });
+  miniRendererB.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  miniRendererB.setSize(110, 150);
+  miniSceneB = new THREE.Scene();
+  miniSceneB.background = new THREE.Color(0x0a0e14);
+  addLights(miniSceneB);
+  miniCamB = new THREE.PerspectiveCamera(40, 110/150, 0.1, 100);
+  miniCamB.position.set(7, 2, 7);
+  miniCamB.lookAt(0, 0, 0);
+  // B-form: narrower, taller, 10 bp/turn, larger rise, bases perpendicular (no groove offset)
+  miniGroupB = buildReferenceHelix(miniSceneB, {
+    rise: 1.20, twist: (36.0*Math.PI/180), radius: 1.0,
+    bpCount: 10, strandColorA: 0x3a6bd4, strandColorB: 0xc06020, baseOffset: 0
+  });
+}
+
+function renderMini() {
+  if (miniRendererA && miniSceneA) miniRendererA.render(miniSceneA, miniCamA);
+  if (miniRendererB && miniSceneB) miniRendererB.render(miniSceneB, miniCamB);
+}
+
+
+// ── Custom context menu ──
+function onContextMenu(e) {
+  e.preventDefault();
+  const menu = document.getElementById('ctx-menu');
+  // Position near cursor, keeping within window bounds
+  const mx = Math.min(e.clientX, window.innerWidth  - 200);
+  const my = Math.min(e.clientY, window.innerHeight - 120);
+  menu.style.left = mx + 'px';
+  menu.style.top  = my + 'px';
+  menu.classList.add('show');
+  // Close on next click anywhere
+  setTimeout(() => document.addEventListener('click', closeCtxMenu, { once: true }), 0);
+}
+
+function closeCtxMenu() {
+  document.getElementById('ctx-menu').classList.remove('show');
+}
+
+function getCanvasDataURL() {
+  // Force a fresh render then grab pixels synchronously
+  renderer.render(scene, camera);
+  return document.getElementById('three-canvas').toDataURL('image/png');
+}
+
+function dataURLtoBlob(dataURL) {
+  const parts = dataURL.split(',');
+  const byteStr = atob(parts[1]);
+  const arr = new Uint8Array(byteStr.length);
+  for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+  return new Blob([arr], { type: 'image/png' });
+}
+
+function copyCanvasImage() {
+  closeCtxMenu();
+  // Grab the data URL synchronously while still in the user-gesture window
+  const dataURL = getCanvasDataURL();
+  const blob = dataURLtoBlob(dataURL);
+  // Pass a pre-resolved Promise — Chrome requires ClipboardItem to receive
+  // a Promise, but it must be constructed synchronously within the gesture
+  navigator.clipboard.write([
+    new ClipboardItem({ 'image/png': Promise.resolve(blob) })
+  ]).then(() => {
+    showCopyFeedback();
+  }).catch(err => {
+    console.warn('Clipboard write failed:', err);
+    // Fallback: trigger download instead
+    triggerDownload(dataURL);
+    showToast('Clipboard blocked — image downloaded instead', '#d29922');
+  });
+}
+
+function downloadCanvasImage() {
+  closeCtxMenu();
+  triggerDownload(getCanvasDataURL());
+}
+
+function triggerDownload(dataURL) {
+  const a = document.createElement('a');
+  a.download = 'sirna_structure.png';
+  a.href = dataURL;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function showCopyFeedback() {
+  showToast('✓  Image copied — paste into PowerPoint with Ctrl+V', '#3fb950');
+}
+
+function showToast(msg, color) {
+  let toast = document.getElementById('copy-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copy-toast';
+    toast.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);' +
+      'font-size:0.78rem;font-weight:600;padding:7px 18px;border-radius:20px;' +
+      'z-index:9999;pointer-events:none;transition:opacity 0.5s;backdrop-filter:blur(4px);' +
+      'color:#000;opacity:0;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.background = color || '#3fb950';
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 2800);
+}
+
+// ── Input validation ──
+['antisense','mrna'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', function(){
+    const err = document.getElementById('err-'+id);
+    if (this.value && !validate(this.value)) {
+      this.classList.add('error'); err.classList.add('show');
+    } else {
+      this.classList.remove('error'); err.classList.remove('show');
+    }
+  });
+});
+
+// Init
+initThree();
+initMiniRenderers();
+renderMini();
+</script>
+</body>
+</html>
