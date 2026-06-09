@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>siRNA 3D Structure Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+    --border: #30363d; --text: #e6edf3; --text2: #8b949e; --text3: #484f58;
+    --accent: #3fb950; --accent-light: #1a3a22;
+    --A: #ff7b54; --U: #58a6ff; --G: #7ee787; --C: #d2a8ff;
+    --match: #3fb950; --wobble: #d29922; --mismatch: #f85149;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+  header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 32px; display:flex; align-items:center; gap:14px; flex-shrink:0; }
+  header h1 { font-size:1.1rem; font-weight:600; }
+  .badge { font-size:0.62rem; font-weight:500; background:var(--accent-light); color:var(--accent); padding:2px 8px; border-radius:20px; }
+  header p { font-size:0.75rem; color:var(--text2); margin-left:auto; }
+
+  .main { display:flex; flex:1; overflow:hidden; }
+
+  .sidebar { width:280px; min-width:280px; background:var(--surface); border-right:1px solid var(--border); padding:20px 18px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; }
+
+  .field-group { display:flex; flex-direction:column; gap:6px; }
+  label { font-size:0.68rem; font-weight:600; letter-spacing:0.6px; color:var(--text2); text-transform:uppercase; }
+  .seq-hint { font-size:0.65rem; color:var(--text3); margin-top:-3px; }
+  textarea { font-family:'JetBrains Mono',monospace; font-size:0.75rem; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); resize:vertical; min-height:64px; line-height:1.6; transition:border-color 0.15s; letter-spacing:1.5px; }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  textarea.error { border-color:var(--mismatch); }
+  .error-msg { font-size:0.65rem; color:var(--mismatch); display:none; }
+  .error-msg.show { display:block; }
+
+  .btn { background:var(--accent); color:#000; border:none; border-radius:6px; padding:9px 16px; font-family:'Inter',sans-serif; font-size:0.82rem; font-weight:600; cursor:pointer; transition:opacity 0.15s,transform 0.1s; }
+  .btn:hover { opacity:0.85; }
+  .btn:active { transform:scale(0.98); }
+  .btn-ghost { background:transparent; color:var(--text2); border:1px solid var(--border); font-weight:400; }
+  .btn-ghost:hover { background:var(--surface2); opacity:1; }
+  .btn-row { display:flex; gap:8px; }
+
+  .stats-box { background:var(--surface2); border-radius:6px; padding:10px 12px; flex-direction:column; gap:5px; display:none; }
+  .stats-box.show { display:flex; }
+  .stat-row { display:flex; justify-content:space-between; font-size:0.72rem; }
+  .stat-label { color:var(--text2); }
+  .stat-value { font-weight:600; font-family:'JetBrains Mono',monospace; color:var(--text); }
+  .stat-value.good { color:var(--match); }
+  .stat-value.warn { color:var(--wobble); }
+  .stat-value.bad { color:var(--mismatch); }
+
+  .legend { border-top:1px solid var(--border); padding-top:14px; display:flex; flex-direction:column; gap:8px; }
+  .legend-title { font-size:0.65rem; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; }
+  .legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  .legend-item { display:flex; align-items:center; gap:5px; font-size:0.68rem; color:var(--text2); }
+  .legend-dot { width:14px; height:14px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:0.55rem; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .legend-line { display:flex; align-items:center; gap:6px; font-size:0.68rem; color:var(--text2); }
+  .line-s { width:20px; height:3px; border-radius:2px; }
+
+  .controls-hint { font-size:0.65rem; color:var(--text3); line-height:1.6; border-top:1px solid var(--border); padding-top:12px; }
+  /* A-form helix analysis */
+  .aform-panel { border-top:1px solid var(--border); padding-top:14px; display:none; flex-direction:column; gap:10px; }
+  .aform-panel.show { display:flex; }
+  .aform-sec-title { font-size:0.68rem; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; }
+  .aform-verdict { border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:10px; }
+  .aform-verdict.yes { background:#0f2e14; border:1px solid #2d6a4f; }
+  .aform-verdict.likely { background:#2a200a; border:1px solid #6a4f0a; }
+  .aform-verdict.unlikely { background:#2e0f0f; border:1px solid #6a2020; }
+  .verdict-icon { font-size:1.4rem; flex-shrink:0; }
+  .verdict-text { display:flex; flex-direction:column; gap:2px; }
+  .verdict-label { font-size:0.82rem; font-weight:600; }
+  .verdict-label.yes { color:#3fb950; }
+  .verdict-label.likely { color:#d29922; }
+  .verdict-label.unlikely { color:#f85149; }
+  .verdict-sub { font-size:0.65rem; color:var(--text2); line-height:1.4; }
+  .gauge-wrap { display:flex; flex-direction:column; gap:4px; }
+  .gauge-label-row { display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text3); }
+  .gauge-track { height:7px; background:var(--surface2); border-radius:4px; overflow:hidden; }
+  .gauge-fill { height:100%; border-radius:4px; transition:width 0.6s ease; }
+  .criterion { display:flex; align-items:flex-start; gap:7px; font-size:0.68rem; line-height:1.4; padding:5px 0; border-bottom:1px solid var(--border); }
+  .criterion:last-child { border-bottom:none; }
+  .crit-icon { font-size:0.8rem; flex-shrink:0; margin-top:1px; }
+  .crit-body { display:flex; flex-direction:column; gap:1px; flex:1; }
+  .crit-name { color:var(--text); font-weight:500; }
+  .crit-detail { color:var(--text2); font-size:0.63rem; }
+
+  /* 3D viewport */
+  .viewport { flex:1; position:relative; background:#070b10; }
+  #three-canvas { display:block; width:100%; height:100%; }
+
+  .empty-state { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text3); gap:10px; pointer-events:none; }
+  .empty-icon { font-size:3.5rem; opacity:0.3; }
+  .empty-state h2 { font-size:0.95rem; font-weight:500; color:var(--text2); }
+  .empty-state p { font-size:0.75rem; max-width:240px; text-align:center; line-height:1.6; }
+  .empty-preview {
+    width: 200px;
+    opacity: 0.5;
+    border-radius: 10px;
+    margin-bottom: 4px;
+    filter: drop-shadow(0 0 18px rgba(63,185,80,0.18));
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .view-controls { position:absolute; bottom:18px; right:18px; display:flex; flex-direction:column; gap:6px; }
+  .view-btn { background:rgba(22,27,34,0.85); border:1px solid var(--border); color:var(--text2); width:34px; height:34px; border-radius:6px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:color 0.15s,background 0.15s; backdrop-filter:blur(4px); }
+  .view-btn:hover { color:var(--text); background:rgba(33,38,45,0.95); }
+
+  /* Custom right-click context menu */
+  .ctx-menu {
+    position: fixed;
+    background: rgba(22,27,34,0.97);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    z-index: 9999;
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 180px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  .ctx-menu.show { display: flex; }
+  .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .ctx-item:hover { background: var(--surface2); }
+  .ctx-item .ctx-icon { font-size: 0.9rem; width: 16px; text-align: center; }
+  .ctx-item .ctx-label { flex: 1; }
+  .ctx-item .ctx-hint { font-size: 0.65rem; color: var(--text3); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+  .ctx-feedback { font-size: 0.68rem; color: var(--accent); padding: 4px 12px; display: none; }
+  .ctx-feedback.show { display: block; }
+  .rotate-btn { color:var(--accent); border-color:var(--accent); font-size:1.2rem; }
+  .rotate-btn:hover { background:rgba(63,185,80,0.15); color:var(--accent); }
+  /* Reference helix inset */
+  .helix-inset {
+    position: absolute;
+    bottom: 18px;
+    left: -18px;
+    background: rgba(13,17,23,0.88);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px 8px;
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 10;
+  }
+  .helix-inset-title {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+  .helix-inset-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .helix-inset-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .helix-inset-label {
+    font-size: 0.6rem;
+    color: var(--text2);
+    letter-spacing: 0.3px;
+    line-height: 1.3;
+    text-align: center;
+  }
+  .helix-inset-label strong {
+    color: var(--text);
+    display: block;
+    font-size: 0.68rem;
+  }
+  canvas.mini-canvas {
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+
+
+  .tooltip { position:absolute; top:14px; left:50%; transform:translateX(-50%); background:rgba(22,27,34,0.92); border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-size:0.72rem; color:var(--text2); pointer-events:none; display:none; backdrop-filter:blur(4px); }
+  .tooltip.show { display:block; }
+
+  .strand-legend { position:absolute; top:14px; right:14px; background:rgba(22,27,34,0.88); border:1px solid var(--border); border-radius:8px; padding:10px 14px; display:none; flex-direction:column; gap:6px; backdrop-filter:blur(4px); }
+  .strand-legend.show { display:flex; }
+  .sl-item { display:flex; align-items:center; gap:8px; font-size:0.7rem; color:var(--text2); }
+  .sl-swatch { width:28px; height:5px; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>siRNA 3D Structure Viewer</h1>
+  <span class="badge">3D · Ribbons & Tubes</span>
+  <p>Drag to rotate · Scroll to zoom · Right-drag to pan</p>
+</header>
+
+<div class="main">
+  <aside class="sidebar">
+    <div class="field-group">
+      <label>siRNA Antisense</label>
+      <div class="seq-hint">5′ → 3′ &nbsp;|&nbsp; A U G C only</div>
+      <textarea id="antisense" placeholder="UUUGAAGUAUGUUUCAAGG" spellcheck="false"></textarea>
+      <div class="error-msg" id="err-antisense">Use only A, U, G, C</div>
+    </div>
+    <div class="field-group">
+      <label>Target mRNA</label>
+      <div class="seq-hint">5′ → 3′ &nbsp;|&nbsp; A U G C only</div>
+      <textarea id="mrna" placeholder="CCUUGAAACAUACUUCAAA" spellcheck="false"></textarea>
+      <div class="error-msg" id="err-mrna">Use only A, U, G, C</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="visualize()">Build 3D Structure</button>
+      <button class="btn btn-ghost" onclick="loadExample()">Example</button>
+    </div>
+
+    <div class="stats-box" id="stats-box">
+      <div class="stat-row"><span class="stat-label">siRNA length</span><span class="stat-value" id="stat-len">—</span></div>
+      <div class="stat-row"><span class="stat-label">Watson-Crick pairs</span><span class="stat-value good" id="stat-wc">—</span></div>
+      <div class="stat-row"><span class="stat-label">G·U wobble pairs</span><span class="stat-value warn" id="stat-gu">—</span></div>
+      <div class="stat-row"><span class="stat-label">Mismatches</span><span class="stat-value bad" id="stat-mm">—</span></div>
+      <div class="stat-row"><span class="stat-label">GC content</span><span class="stat-value" id="stat-gc">—</span></div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-title">Nucleotide Colors</div>
+      <div class="legend-grid">
+        <div class="legend-item"><div class="legend-dot" style="background:#3a1f10;color:var(--A)">A</div>Adenine</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0e2040;color:var(--U)">U</div>Uracil</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0f2e14;color:var(--G)">G</div>Guanine</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2a1a40;color:var(--C)">C</div>Cytosine</div>
+      </div>
+      <div class="legend-title" style="margin-top:4px">Base Pair Rungs</div>
+      <div class="legend-line"><div class="line-s" style="background:var(--match)"></div>Watson-Crick (A·U, G·C)</div>
+      <div class="legend-line"><div class="line-s" style="background:repeating-linear-gradient(90deg,#f0c040 0,#f0c040 4px,transparent 4px,transparent 8px)"></div>G·U Wobble (dashed)</div>
+      <div class="legend-line"><div class="line-s" style="background:var(--mismatch);opacity:0.5"></div>Mismatch</div>
+    </div>
+
+    <div class="controls-hint">
+      <strong style="color:var(--text2)">Navigation</strong><br>
+      Left-drag · rotate &nbsp;|&nbsp; Scroll · zoom<br>
+      Right-drag · pan &nbsp;|&nbsp; Double-click · reset
+    </div>
+
+    <div class="aform-panel" id="aform-panel">
+      <div class="aform-sec-title">A-form Helix Analysis</div>
+      <div class="aform-verdict" id="aform-verdict">
+        <div class="verdict-icon" id="aform-icon">🧬</div>
+        <div class="verdict-text">
+          <div class="verdict-label" id="aform-label">—</div>
+          <div class="verdict-sub" id="aform-sub">—</div>
+        </div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-label-row"><span>A-form likelihood</span><span id="aform-score-label">0%</span></div>
+        <div class="gauge-track"><div class="gauge-fill" id="aform-gauge" style="width:0%"></div></div>
+      </div>
+      <div id="aform-criteria"></div>
+    </div>
+  </aside>
+
+  <div class="viewport" id="viewport">
+    <canvas id="three-canvas"></canvas>
+    <div class="empty-state" id="empty-state">
+      <img src="data:image/jpeg;base64,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" alt="siRNA duplex preview" class="empty-preview">
+      <h2>Enter sequences to begin</h2>
+      <p>Provide the siRNA antisense and mRNA sequences, then click Build 3D Structure.</p>
+    </div>
+    <div class="strand-legend" id="strand-legend">
+      <div class="sl-item"><div class="sl-swatch" style="background:#58a6ff"></div>mRNA ribbon</div>
+      <div class="sl-item"><div class="sl-swatch" style="background:#f0883e"></div>siRNA antisense ribbon</div>
+      <div class="sl-item"><div class="sl-swatch" style="background:#3fb950;height:3px"></div>Base pair rungs</div>
+    </div>
+
+    <div class="helix-inset" id="helix-inset">
+      <div class="helix-inset-title">Reference Helices</div>
+      <div class="helix-inset-row">
+        <div class="helix-inset-item">
+          <canvas class="mini-canvas" id="canvas-aform" width="110" height="150"></canvas>
+          <div class="helix-inset-label"><strong>A-form</strong>11 bp/turn · wide</div>
+        </div>
+        <div class="helix-inset-item">
+          <canvas class="mini-canvas" id="canvas-bform" width="110" height="150"></canvas>
+          <div class="helix-inset-label"><strong>B-form</strong>10 bp/turn · narrow</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ctx-menu" id="ctx-menu">
+      <div class="ctx-item" id="ctx-copy" onclick="copyCanvasImage()">
+        <span class="ctx-icon">📋</span>
+        <span class="ctx-label">Copy image</span>
+        <span class="ctx-hint">Ctrl+V in PowerPoint</span>
+      </div>
+      <div class="ctx-item" onclick="downloadCanvasImage()">
+        <span class="ctx-icon">⬇</span>
+        <span class="ctx-label">Save as PNG</span>
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" onclick="resetCamera(); closeCtxMenu()">
+        <span class="ctx-icon">⟳</span>
+        <span class="ctx-label">Reset view</span>
+      </div>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+    <div class="view-controls">
+      <button class="view-btn" title="Reset view" onclick="resetCamera()">⟳</button>
+      <button class="view-btn" title="Top view" onclick="topView()">⊤</button>
+      <button class="view-btn" title="Side view" onclick="sideView()">◫</button>
+      <button class="view-btn rotate-btn" title="Rotate 45°" onclick="rotateStep()">↻</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── Sequence utilities ──
+const BASE_COLORS = {
+  A: 0xff7b54, U: 0x58a6ff, G: 0x7ee787, C: 0xd2a8ff
+};
+const BASE_COLORS_EMISSIVE = {
+  A: 0x3a1008, U: 0x081830, G: 0x0a2010, C: 0x1a0830
+};
+const BACKBONE_MRNA   = 0x3a6bd4;
+const BACKBONE_SIRNA  = 0xc06020;
+const PAIR_WC_COLOR   = 0x3fb950;
+const PAIR_GU_COLOR   = 0xd29922;
+const PAIR_MM_COLOR   = 0x444c56;
+
+function clean(s) { return s.trim().toUpperCase().replace(/\s/g,''); }
+function validate(s) { return /^[AUGCaugc]+$/.test(s.trim()); }
+function complement(b) { return {A:'U',U:'A',G:'C',C:'G'}[b]||'?'; }
+function pairType(a,b) {
+  const wc = {AU:1,UA:1,GC:1,CG:1};
+  if (wc[a+b]) return 'wc';
+  if ((a==='G'&&b==='U')||(a==='U'&&b==='G')) return 'wobble';
+  return 'mismatch';
+}
+
+function findAlignment(asRevArr, mrna) {
+  const asLen = asRevArr.length, mLen = mrna.length;
+  if (mLen < asLen) return 0;
+  let best=0, bestScore=-1;
+  for (let s=0; s<=mLen-asLen; s++) {
+    let score=0;
+    for (let i=0; i<asLen; i++) {
+      const t = pairType(asRevArr[i], mrna[s+i]);
+      score += t==='wc'?2:t==='wobble'?1:0;
+    }
+    if (score>bestScore){bestScore=score;best=s;}
+  }
+  return best;
+}
+
+function loadExample() {
+  document.getElementById('antisense').value = 'UUUGAAGUAUGUUUCAAGG';
+  document.getElementById('mrna').value      = 'CCUUGAAACAUACUUCAAAGUU';
+  visualize();
+}
+
+// ── Three.js globals ──
+let scene, camera, renderer, helixGroup;
+let isDragging=false, isRightDrag=false, lastMouse={x:0,y:0};
+let rotTarget = 0;
+let camTheta=0.3, camPhi=1.1, camR=28, camTarget=new THREE.Vector3(0,0,0);
+let animFrame;
+
+function initThree() {
+  const vp = document.getElementById('viewport');
+  const canvas = document.getElementById('three-canvas');
+
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  resize();
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x070b10);
+  scene.fog = new THREE.FogExp2(0x070b10, 0.018);
+
+  // Camera
+  camera = new THREE.PerspectiveCamera(45, vp.clientWidth/vp.clientHeight, 0.1, 200);
+  updateCamera();
+
+  // Lights
+  const amb = new THREE.AmbientLight(0xffffff, 0.4);
+  scene.add(amb);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(10, 20, 15);
+  dir.castShadow = true;
+  scene.add(dir);
+  const fill = new THREE.DirectionalLight(0x8ab4ff, 0.3);
+  fill.position.set(-10,-5,-10);
+  scene.add(fill);
+  const rim = new THREE.PointLight(0x3fb950, 0.6, 60);
+  rim.position.set(0, 20, 0);
+  scene.add(rim);
+
+  // Events
+  canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseup', ()=>isDragging=false);
+  canvas.addEventListener('mouseleave', ()=>isDragging=false);
+  canvas.addEventListener('wheel', onWheel, {passive:true});
+  canvas.addEventListener('dblclick', resetCamera);
+  canvas.addEventListener('contextmenu', onContextMenu);
+  window.addEventListener('resize', resize);
+
+  renderLoop();
+}
+
+function resize() {
+  const vp = document.getElementById('viewport');
+  renderer.setSize(vp.clientWidth, vp.clientHeight);
+  if (camera) camera.aspect = vp.clientWidth/vp.clientHeight, camera.updateProjectionMatrix();
+}
+
+function updateCamera() {
+  const x = camR * Math.sin(camPhi) * Math.sin(camTheta);
+  const y = camR * Math.cos(camPhi);
+  const z = camR * Math.sin(camPhi) * Math.cos(camTheta);
+  camera.position.set(
+    camTarget.x + x,
+    camTarget.y + y,
+    camTarget.z + z
+  );
+  camera.lookAt(camTarget);
+}
+
+function onMouseDown(e) {
+  isDragging=true;
+  isRightDrag = e.button===2;
+  lastMouse={x:e.clientX,y:e.clientY};
+}
+function onMouseMove(e) {
+  if (!isDragging) return;
+  const dx=(e.clientX-lastMouse.x)*0.005;
+  const dy=(e.clientY-lastMouse.y)*0.005;
+  lastMouse={x:e.clientX,y:e.clientY};
+  if (isRightDrag) {
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    camera.getWorldDirection(right);
+    right.cross(camera.up).normalize();
+    up.copy(camera.up).normalize();
+    camTarget.addScaledVector(right, -dx*camR*0.3);
+    camTarget.addScaledVector(up, dy*camR*0.3);
+  } else {
+    camTheta -= dx;
+    camPhi = Math.max(0.15, Math.min(Math.PI-0.15, camPhi+dy));
+  }
+  updateCamera();
+}
+function onWheel(e) {
+  camR = Math.max(5, Math.min(80, camR + e.deltaY*0.04));
+  updateCamera();
+}
+function resetCamera() {
+  camTheta=0.3; camPhi=1.1; camR=28;
+  camTarget.set(helixGroup ? 4 : 0, 0, 0);
+  updateCamera();
+}
+function topView() { camPhi=0.18; updateCamera(); }
+function sideView() { camPhi=Math.PI/2; camTheta=0; updateCamera(); }
+function rotateStep() { rotTarget += Math.PI / 4; }
+
+function renderLoop() {
+  animFrame = requestAnimationFrame(renderLoop);
+  // Smooth animated step-rotation
+  if (helixGroup && Math.abs(rotTarget - helixGroup.rotation.y) > 0.001) {
+    helixGroup.rotation.y += (rotTarget - helixGroup.rotation.y) * 0.12;
+  } else if (helixGroup) {
+    helixGroup.rotation.y = rotTarget;
+  }
+  renderer.render(scene, camera);
+}
+
+// ── A-form RNA helix parameters ──
+const RISE   = 0.9;                        // rise per base pair (units)
+const TWIST  = (32.7 * Math.PI) / 180;    // rotation per bp (radians)
+const RADIUS = 1.9;                        // helix radius
+
+// ── Low-level geometry helpers ──
+function makeCylinder(from, to, radius, color, opacity) {
+  const dir = new THREE.Vector3().subVectors(to, from);
+  const len = dir.length();
+  if (len < 0.001) return null;
+  const geo = new THREE.CylinderGeometry(radius, radius, len, 12, 1);
+  const mat = new THREE.MeshStandardMaterial({
+    color, roughness:0.4, metalness:0.05,
+    transparent: opacity < 1, opacity: opacity ?? 1
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5));
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+  return mesh;
+}
+
+function makeSphere(pos, r, color) {
+  const geo = new THREE.SphereGeometry(r, 16, 12);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness:0.35, metalness:0.1 });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.copy(pos);
+  return m;
+}
+
+// Build a smooth extruded ribbon along an array of {pos, normal, binormal} frames
+function makeRibbon(frames, halfWidth, thickness, color) {
+  const positions = [];
+  const normals   = [];
+  const indices   = [];
+  const n = frames.length;
+
+  // For each frame, emit 4 vertices (top-left, top-right, bot-left, bot-right)
+  for (let i = 0; i < n; i++) {
+    const { pos, right, up } = frames[i];
+    const hw = halfWidth;
+    const ht = thickness * 0.5;
+    // top face
+    positions.push(
+      pos.x + right.x*hw + up.x*ht, pos.y + right.y*hw + up.y*ht, pos.z + right.z*hw + up.z*ht,
+      pos.x - right.x*hw + up.x*ht, pos.y - right.y*hw + up.y*ht, pos.z - right.z*hw + up.z*ht,
+      // bottom face
+      pos.x + right.x*hw - up.x*ht, pos.y + right.y*hw - up.y*ht, pos.z + right.z*hw - up.z*ht,
+      pos.x - right.x*hw - up.x*ht, pos.y - right.y*hw - up.y*ht, pos.z - right.z*hw - up.z*ht,
+    );
+    // normals (approximate)
+    for (let k=0; k<2; k++) normals.push(up.x, up.y, up.z);
+    for (let k=0; k<2; k++) normals.push(-up.x, -up.y, -up.z);
+  }
+
+  // Quad strip — top face, bottom face, and side edges
+  for (let i = 0; i < n-1; i++) {
+    const b = i * 4;
+    const b2 = b + 4;
+    // top
+    indices.push(b, b2, b+1,  b+1, b2, b2+1);
+    // bottom
+    indices.push(b+2, b+3, b2+2,  b+3, b2+3, b2+2);
+    // left side
+    indices.push(b+1, b2+1, b+3,  b+3, b2+1, b2+3);
+    // right side
+    indices.push(b, b+2, b2,  b+2, b2+2, b2);
+  }
+  // end caps
+  indices.push(0,1,2, 1,3,2);
+  const L = (n-1)*4;
+  indices.push(L, L+2, L+1, L+1, L+2, L+3);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({ color, roughness:0.3, metalness:0.08, side: THREE.DoubleSide });
+  return new THREE.Mesh(geo, mat);
+}
+
+// Build a smooth tube along a path of Vector3 points
+function makeTube(points, radius, color, opacity) {
+  if (points.length < 2) return null;
+  const curve = new THREE.CatmullRomCurve3(points);
+  const segs  = Math.max(points.length * 4, 20);
+  const geo   = new THREE.TubeGeometry(curve, segs, radius, 10, false);
+  const mat   = new THREE.MeshStandardMaterial({
+    color, roughness:0.4, metalness:0.05,
+    transparent: opacity < 1, opacity: opacity ?? 1
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+// ── Helix math ──
+function helixPos(idx, angleOffset, yOffset) {
+  const angle = idx * TWIST + angleOffset;
+  const y = idx * RISE + yOffset;
+  return new THREE.Vector3(RADIUS * Math.cos(angle), y, RADIUS * Math.sin(angle));
+}
+
+// For a helix point, compute the ribbon frame (right = tangential-ish, up = outward from axis + slight normal)
+function helixFrame(idx, angleOffset, yOffset) {
+  const pos   = helixPos(idx, angleOffset, yOffset);
+  // tangent along helix
+  const pos1  = helixPos(idx + 0.01, angleOffset, yOffset);
+  const tangent = pos1.clone().sub(pos).normalize();
+  // outward from helix axis (radial)
+  const axial = new THREE.Vector3(0, 1, 0);
+  // right = cross(tangent, axial), then re-orthogonalize
+  const right = new THREE.Vector3().crossVectors(tangent, axial).normalize();
+  // up = cross(right, tangent)
+  const up    = new THREE.Vector3().crossVectors(right, tangent).normalize();
+  return { pos, right, up, tangent };
+}
+
+// ── Main visualize function ──
+function visualize() {
+  const asRaw = document.getElementById('antisense').value;
+  const mRaw  = document.getElementById('mrna').value;
+  let ok = true;
+  ['antisense','mrna'].forEach(id => {
+    const el  = document.getElementById(id);
+    const val = id === 'antisense' ? asRaw : mRaw;
+    const err = document.getElementById('err-' + id);
+    if (!validate(val)) { el.classList.add('error'); err.classList.add('show'); ok = false; }
+    else { el.classList.remove('error'); err.classList.remove('show'); }
+  });
+  if (!ok) return;
+
+  const antisense  = clean(asRaw);
+  const mrna       = clean(mRaw);
+  const asRevArr   = antisense.split('').reverse(); // antisense read 3'→5'
+  const alignStart = findAlignment(asRevArr, mrna);
+  const asLen      = antisense.length;
+  const mLen       = mrna.length;
+
+  // Pair data (antisense index i ↔ mRNA index alignStart+i)
+  const pairs = asRevArr.map((base, i) => {
+    const mIdx  = alignStart + i;
+    const mBase = mIdx < mLen ? mrna[mIdx] : null;
+    return { asBase: base, mBase, type: mBase ? pairType(base, mBase) : 'none' };
+  });
+
+  // Stats
+  const wc = pairs.filter(p => p.type === 'wc').length;
+  const gu = pairs.filter(p => p.type === 'wobble').length;
+  const mm = pairs.filter(p => p.type === 'mismatch').length;
+  const gc = antisense.split('').filter(b => b==='G'||b==='C').length;
+  document.getElementById('stat-len').textContent = asLen + ' nt';
+  document.getElementById('stat-wc').textContent  = wc;
+  document.getElementById('stat-gu').textContent  = gu;
+  document.getElementById('stat-mm').textContent  = mm;
+  document.getElementById('stat-gc').textContent  = Math.round(100*gc/asLen) + '%';
+  document.getElementById('stats-box').classList.add('show');
+
+  if (helixGroup) scene.remove(helixGroup);
+  helixGroup = new THREE.Group();
+  rotTarget = 0;
+
+  const yOffset = -(asLen * RISE) / 2;
+
+  // ── Helper: position on each strand ──
+  // Strand A = mRNA, offset 0
+  // Strand B = antisense, offset π (antiparallel opposite groove)
+  const AO = 0, BO = Math.PI;
+
+  const posA = i => helixPos(i, AO, yOffset);
+  const posB = i => helixPos(i, BO, yOffset);
+
+  // ── 1. Ribbon for mRNA backbone ──
+  {
+    const frames = [];
+    for (let i = 0; i < mLen; i++) {
+      frames.push(helixFrame(i, AO, yOffset));
+    }
+    // Smooth by subsampling with more points
+    const smoothFrames = [];
+    for (let t = 0; t <= (mLen-1)*8; t++) {
+      const fi = t / 8;
+      const i0 = Math.min(Math.floor(fi), mLen-2);
+      const frac = fi - i0;
+      const f0 = helixFrame(i0,       AO, yOffset);
+      const f1 = helixFrame(i0+1,     AO, yOffset);
+      smoothFrames.push({
+        pos:   f0.pos.clone().lerp(f1.pos, frac),
+        right: f0.right.clone().lerp(f1.right, frac).normalize(),
+        up:    f0.up.clone().lerp(f1.up, frac).normalize()
+      });
+    }
+    const ribbon = makeRibbon(smoothFrames, 0.38, 0.10, BACKBONE_MRNA);
+    helixGroup.add(ribbon);
+  }
+
+  // ── 2. Ribbon for antisense backbone (only over aligned region) ──
+  {
+    const smoothFrames = [];
+    const startIdx = alignStart, endIdx = alignStart + asLen - 1;
+    for (let t = 0; t <= (asLen-1)*8; t++) {
+      const fi = startIdx + t / 8;
+      const i0 = Math.min(Math.floor(fi), endIdx - 1);
+      const frac = fi - i0;
+      const f0 = helixFrame(i0,   BO, yOffset);
+      const f1 = helixFrame(i0+1, BO, yOffset);
+      smoothFrames.push({
+        pos:   f0.pos.clone().lerp(f1.pos, frac),
+        right: f0.right.clone().lerp(f1.right, frac).normalize(),
+        up:    f0.up.clone().lerp(f1.up, frac).normalize()
+      });
+    }
+    const ribbon = makeRibbon(smoothFrames, 0.38, 0.10, BACKBONE_SIRNA);
+    helixGroup.add(ribbon);
+  }
+
+  // ── 3. Nucleotide base tubes (backbone → helix axis) for mRNA ──
+  for (let i = 0; i < mLen; i++) {
+    const base  = mrna[i];
+    const color = BASE_COLORS[base] || 0xffffff;
+    const from  = posA(i);
+    const axis  = new THREE.Vector3(0, from.y, 0); // project to axis
+    // Draw tube from backbone point inward ~60% toward axis
+    const inner = from.clone().lerp(axis, 0.55);
+    const tube  = makeCylinder(from, inner, 0.13, color, 1.0);
+    if (tube) helixGroup.add(tube);
+    // Nucleotide cap sphere
+    helixGroup.add(makeSphere(inner, 0.2, color));
+  }
+
+  // ── 4. Nucleotide base tubes for antisense ──
+  for (let i = 0; i < asLen; i++) {
+    const base  = asRevArr[i];
+    const color = BASE_COLORS[base] || 0xffffff;
+    const gIdx  = alignStart + i;
+    const from  = posB(gIdx);
+    const axis  = new THREE.Vector3(0, from.y, 0);
+    const inner = from.clone().lerp(axis, 0.55);
+    const tube  = makeCylinder(from, inner, 0.13, color, 1.0);
+    if (tube) helixGroup.add(tube);
+    helixGroup.add(makeSphere(inner, 0.2, color));
+  }
+
+  // ── 5. Base pair rung tubes ──
+  // W-C: solid green cylinder | Wobble: dashed yellow segments | Mismatch: faint gray
+  for (let i = 0; i < asLen; i++) {
+    const p = pairs[i];
+    if (!p.mBase) continue;
+    const gIdx  = alignStart + i;
+    const fromA = posA(gIdx).clone().lerp(new THREE.Vector3(0, posA(gIdx).y, 0), 0.55);
+    const fromB = posB(gIdx).clone().lerp(new THREE.Vector3(0, posB(gIdx).y, 0), 0.55);
+
+    if (p.type === 'wobble') {
+      // Dashed yellow: 5 short cylinder segments with equal gaps
+      const DASH_N = 5;
+      const fullDir = fromB.clone().sub(fromA);
+      const fullLen = fullDir.length();
+      const unit    = fullDir.clone().normalize();
+      // total = DASH_N dashes + (DASH_N-1) gaps, dash == gap width
+      const segLen  = fullLen / (DASH_N * 2 - 1);
+      for (let d = 0; d < DASH_N; d++) {
+        const t0  = d * 2 * segLen;
+        const t1  = t0 + segLen;
+        const seg = makeCylinder(
+          fromA.clone().addScaledVector(unit, t0),
+          fromA.clone().addScaledVector(unit, Math.min(t1, fullLen)),
+          0.10, 0xf0c040, 0.92
+        );
+        if (seg) helixGroup.add(seg);
+      }
+    } else {
+      const color   = p.type === 'wc' ? PAIR_WC_COLOR : PAIR_MM_COLOR;
+      const opacity = p.type === 'mismatch' ? 0.22 : 0.82;
+      const rungR   = p.type === 'wc' ? 0.12 : 0.07;
+      const tube    = makeCylinder(fromA, fromB, rungR, color, opacity);
+      if (tube) helixGroup.add(tube);
+    }
+  }
+
+  // ── 6. End arrows (cones) on strand termini ──
+  function addArrow(pos, dir, color) {
+    const geo = new THREE.ConeGeometry(0.18, 0.5, 12);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness:0.35 });
+    const m   = new THREE.Mesh(geo, mat);
+    m.position.copy(pos);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+    helixGroup.add(m);
+  }
+
+  // mRNA: 5' start, 3' end
+  if (mLen > 1) {
+    const d5 = posA(0).clone().sub(posA(1)).normalize();
+    addArrow(posA(0).clone().addScaledVector(d5, 0.4), d5, 0x3a6bd4);
+    const d3 = posA(mLen-1).clone().sub(posA(mLen-2)).normalize();
+    addArrow(posA(mLen-1).clone().addScaledVector(d3, 0.4), d3, 0x2244aa);
+  }
+  // antisense: 3' at alignStart, 5' at alignStart+asLen-1
+  if (asLen > 1) {
+    const gS = alignStart, gE = alignStart + asLen - 1;
+    const dS = posB(gS).clone().sub(posB(gS+1)).normalize();
+    addArrow(posB(gS).clone().addScaledVector(dS, 0.4), dS, 0xc06020);
+    const dE = posB(gE).clone().sub(posB(gE-1)).normalize();
+    addArrow(posB(gE).clone().addScaledVector(dE, 0.4), dE, 0x804010);
+  }
+
+  // ── 7. Center and add to scene, offset right to clear the inset ──
+  const box    = new THREE.Box3().setFromObject(helixGroup);
+  const center = box.getCenter(new THREE.Vector3());
+  helixGroup.position.sub(center);
+  helixGroup.position.x += 4;   // shift right in world space
+  scene.add(helixGroup);
+
+  camR = Math.max(18, asLen * 0.7 + 12);
+  camTarget.set(4, 0, 0);        // point camera at the shifted position
+  updateCamera();
+
+
+  // ── A-form helix analysis ──
+  const aformAnalysis = analyzeAform(antisense, mrna, pairs, asLen);
+  renderAformPanel(aformAnalysis);
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('strand-legend').classList.add('show');
+}
+
+
+// ── A-form helix analysis ──
+// A-form RNA helix criteria (based on structural biology literature):
+//  1. All-RNA duplex (both strands RNA) — assumed here since input is U-based
+//  2. Sufficient duplex length (≥6 bp minimum; 19-21 bp is canonical siRNA)
+//  3. High Watson-Crick pair fraction (ideally ≥80%)
+//  4. No consecutive mismatches (≥2 in a row destabilize A-form)
+//  5. GC content 30–70% (very low GC → unstable; very high → rigid/misfolded)
+//  6. G·U wobble pairs are tolerated in A-form (minor distortion only)
+//  7. No long purine runs on one strand (≥5 consecutive purines = AA/GG stretches)
+//     can cause local geometry distortions
+//  8. Antisense sequence is all-RNA (U present, no T) — already validated
+//  Each criterion returns { pass: bool, weight: number, name, detail }
+
+function analyzeAform(antisense, mrna, pairs, asLen) {
+  const results = [];
+  let totalWeight = 0, passedWeight = 0;
+
+  function crit(name, pass, weight, detail) {
+    results.push({ name, pass, weight, detail });
+    totalWeight += weight;
+    if (pass) passedWeight += weight;
+  }
+
+  // 1. Duplex length
+  const minLen = 6, idealMin = 16, idealMax = 25;
+  const lenPass = asLen >= minLen;
+  const lenIdeal = asLen >= idealMin && asLen <= idealMax;
+  crit(
+    'Duplex length',
+    lenPass,
+    2,
+    asLen < minLen
+      ? `${asLen} nt — too short for stable A-form (min ~6 bp)`
+      : lenIdeal
+        ? `${asLen} nt — ideal range for siRNA A-form (16–25 nt)`
+        : `${asLen} nt — functional but outside canonical 16–25 nt range`
+  );
+
+  // 2. Watson-Crick pair fraction
+  const wcCount = pairs.filter(p => p.type === 'wc').length;
+  const wcFrac  = wcCount / pairs.length;
+  const wcPass  = wcFrac >= 0.75;
+  crit(
+    'Watson-Crick pairing',
+    wcPass,
+    3,
+    `${Math.round(wcFrac*100)}% W-C pairs — ${wcPass ? 'sufficient for stable A-form geometry' : 'too many mismatches; A-form helix destabilized'}`
+  );
+
+  // 3. No consecutive mismatches (≥2 in a row)
+  let maxConsecMM = 0, curMM = 0;
+  for (const p of pairs) {
+    if (p.type === 'mismatch') { curMM++; maxConsecMM = Math.max(maxConsecMM, curMM); }
+    else curMM = 0;
+  }
+  const noConsecMM = maxConsecMM < 2;
+  crit(
+    'No consecutive mismatches',
+    noConsecMM,
+    2,
+    maxConsecMM === 0
+      ? 'No mismatches — optimal backbone geometry'
+      : maxConsecMM === 1
+        ? '1 isolated mismatch — tolerated in A-form'
+        : `${maxConsecMM} consecutive mismatches — causes local helix unwinding`
+  );
+
+  // 4. GC content (antisense)
+  const gcCount = antisense.split('').filter(b => b==='G'||b==='C').length;
+  const gcPct   = gcCount / antisense.length;
+  const gcPass  = gcPct >= 0.30 && gcPct <= 0.70;
+  crit(
+    'GC content (30–70%)',
+    gcPass,
+    2,
+    `${Math.round(gcPct*100)}% GC — ${gcPct < 0.30 ? 'AU-rich; reduced stacking, helix may be unstable' : gcPct > 0.70 ? 'GC-rich; may over-stabilize and resist RISC unwinding' : 'good range for A-form thermodynamic stability'}`
+  );
+
+  // 5. G·U wobble fraction (tolerated but not dominant)
+  const guCount  = pairs.filter(p => p.type === 'wobble').length;
+  const guFrac   = guCount / pairs.length;
+  const guPass   = guFrac <= 0.30;
+  crit(
+    'G·U wobble content ≤30%',
+    guPass,
+    1,
+    guFrac === 0
+      ? 'No G·U wobbles — ideal Watson-Crick geometry throughout'
+      : guPass
+        ? `${Math.round(guFrac*100)}% G·U wobbles — tolerated; minor groove width retained`
+        : `${Math.round(guFrac*100)}% G·U wobbles — too many; cumulative widening of minor groove`
+  );
+
+  // 6. No long purine runs (≥5 purines in a row on antisense)
+  const purines = 'AG';
+  let maxPuRun = 0, curPu = 0;
+  for (const b of antisense) {
+    if (purines.includes(b)) { curPu++; maxPuRun = Math.max(maxPuRun, curPu); }
+    else curPu = 0;
+  }
+  const noPuRun = maxPuRun < 5;
+  crit(
+    'No long purine runs (≥5)',
+    noPuRun,
+    1,
+    maxPuRun < 3
+      ? 'No extended purine tracts — backbone torsion angles remain A-form'
+      : maxPuRun < 5
+        ? `Run of ${maxPuRun} purines — minor; likely still A-form`
+        : `Run of ${maxPuRun} purines — may locally shift toward B-form geometry`
+  );
+
+  // 7. Both strands RNA (no DNA T bases) — validated upstream, always passes
+  crit('All-RNA duplex (U not T)', true, 2, 'RNA:RNA duplex — C3&#39;-endo sugar pucker strongly favors A-form over B-form');
+
+  // Score
+  const score = totalWeight > 0 ? passedWeight / totalWeight : 0;
+  let verdict, cls, icon;
+  if (score >= 0.82) {
+    verdict = 'A-form helix: Yes';
+    cls = 'yes'; icon = '✅';
+  } else if (score >= 0.55) {
+    verdict = 'A-form helix: Likely';
+    cls = 'likely'; icon = '⚠️';
+  } else {
+    verdict = 'A-form helix: Unlikely';
+    cls = 'unlikely'; icon = '❌';
+  }
+
+  const subtext = score >= 0.82
+    ? 'Sequence properties support stable A-form RNA duplex geometry.'
+    : score >= 0.55
+      ? 'Mostly A-form, but some criteria suggest local distortions.'
+      : 'Multiple criteria fail; helix likely adopts non-canonical geometry.';
+
+  return { results, score, verdict, cls, icon, subtext };
+}
+
+function renderAformPanel(analysis) {
+  const panel = document.getElementById('aform-panel');
+  panel.classList.add('show');
+
+  const verdict = document.getElementById('aform-verdict');
+  verdict.className = 'aform-verdict ' + analysis.cls;
+  document.getElementById('aform-icon').textContent  = analysis.icon;
+  document.getElementById('aform-label').textContent = analysis.verdict;
+  document.getElementById('aform-label').className   = 'verdict-label ' + analysis.cls;
+  document.getElementById('aform-sub').textContent   = analysis.subtext;
+
+  const pct = Math.round(analysis.score * 100);
+  document.getElementById('aform-score-label').textContent = pct + '%';
+  const fill = document.getElementById('aform-gauge');
+  fill.style.width = pct + '%';
+  fill.style.background = analysis.cls === 'yes' ? '#3fb950' : analysis.cls === 'likely' ? '#d29922' : '#f85149';
+
+  const container = document.getElementById('aform-criteria');
+  container.innerHTML = '';
+  for (const r of analysis.results) {
+    const div = document.createElement('div');
+    div.className = 'criterion';
+    div.innerHTML =
+      '<span class="crit-icon">' + (r.pass ? '✓' : '✗') + '</span>' +
+      '<div class="crit-body">' +
+        '<div class="crit-name" style="color:' + (r.pass ? '#3fb950' : '#f85149') + '">' + r.name + '</div>' +
+        '<div class="crit-detail">' + r.detail + '</div>' +
+      '</div>';
+    container.appendChild(div);
+  }
+}
+
+
+// ── Mini reference helix renderers ──
+let miniRendererA, miniRendererB, miniSceneA, miniSceneB, miniCamA, miniCamB;
+let miniGroupA, miniGroupB;
+let miniRotA = 0, miniRotB = 0;
+
+function buildReferenceHelix(scene, params) {
+  // params: { rise, twist, radius, bpCount, strandColorA, strandColorB, baseOffset }
+  const { rise, twist, radius, bpCount, strandColorA, strandColorB, baseOffset } = params;
+  const group = new THREE.Group();
+  const yOff  = -(bpCount * rise) / 2;
+  const AO = 0, BO = Math.PI + (baseOffset || 0);
+
+  function hPos(idx, ao) {
+    const a = idx * twist + ao;
+    return new THREE.Vector3(radius * Math.cos(a), idx * rise + yOff, radius * Math.sin(a));
+  }
+  function hFrame(idx, ao) {
+    const pos  = hPos(idx, ao);
+    const pos1 = new THREE.Vector3(
+      radius * Math.cos((idx+0.01)*twist + ao),
+      (idx+0.01)*rise + yOff,
+      radius * Math.sin((idx+0.01)*twist + ao)
+    );
+    const tangent = pos1.clone().sub(pos).normalize();
+    const axial   = new THREE.Vector3(0,1,0);
+    const right   = new THREE.Vector3().crossVectors(tangent, axial).normalize();
+    const up      = new THREE.Vector3().crossVectors(right, tangent).normalize();
+    return { pos, right, up };
+  }
+
+  // Build ribbon for strand A
+  function buildRibbon(ao, color) {
+    const frames = [];
+    for (let t = 0; t <= (bpCount-1)*8; t++) {
+      const fi = t/8;
+      const i0 = Math.min(Math.floor(fi), bpCount-2);
+      const fr = fi-i0;
+      const f0 = hFrame(i0, ao), f1 = hFrame(i0+1, ao);
+      frames.push({
+        pos:   f0.pos.clone().lerp(f1.pos, fr),
+        right: f0.right.clone().lerp(f1.right, fr).normalize(),
+        up:    f0.up.clone().lerp(f1.up, fr).normalize()
+      });
+    }
+    return makeRibbon(frames, 0.30, 0.09, color);
+  }
+
+  group.add(buildRibbon(AO, strandColorA));
+  group.add(buildRibbon(BO, strandColorB));
+
+  // Base tubes and rungs
+  for (let i = 0; i < bpCount; i++) {
+    const pA   = hPos(i, AO);
+    const pB   = hPos(i, BO);
+    const axis = new THREE.Vector3(0, pA.y, 0);
+    // strand A nucleotide stub
+    const iA = pA.clone().lerp(axis, 0.5);
+    const cA = makeCylinder(pA, iA, 0.10, 0x7ee787, 1.0);
+    if (cA) group.add(cA);
+    group.add(makeSphere(iA, 0.16, 0x7ee787));
+    // strand B nucleotide stub
+    const iB = pB.clone().lerp(axis, 0.5);
+    const cB = makeCylinder(pB, iB, 0.10, 0x58a6ff, 1.0);
+    if (cB) group.add(cB);
+    group.add(makeSphere(iB, 0.16, 0x58a6ff));
+    // rung
+    const rung = makeCylinder(iA, iB, 0.08, 0x3fb950, 0.75);
+    if (rung) group.add(rung);
+  }
+
+  scene.add(group);
+  return group;
+}
+
+function initMiniRenderers() {
+  const canvA = document.getElementById('canvas-aform');
+  const canvB = document.getElementById('canvas-bform');
+  if (!canvA || !canvB) return;
+
+  // Shared light helper
+  function addLights(sc) {
+    sc.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const d = new THREE.DirectionalLight(0xffffff, 0.9);
+    d.position.set(5, 10, 8);
+    sc.add(d);
+    const f = new THREE.DirectionalLight(0x8ab4ff, 0.3);
+    f.position.set(-5,-3,-5);
+    sc.add(f);
+  }
+
+  // ── A-form renderer ──
+  miniRendererA = new THREE.WebGLRenderer({ canvas: canvA, antialias: true, alpha: true });
+  miniRendererA.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  miniRendererA.setSize(110, 150);
+  miniSceneA = new THREE.Scene();
+  miniSceneA.background = new THREE.Color(0x0a0e14);
+  addLights(miniSceneA);
+  miniCamA = new THREE.PerspectiveCamera(40, 110/150, 0.1, 100);
+  miniCamA.position.set(7, 2, 7);
+  miniCamA.lookAt(0, 0, 0);
+  // A-form: wide helix, 11 bp/turn, small rise
+  miniGroupA = buildReferenceHelix(miniSceneA, {
+    rise: 0.80, twist: (32.7*Math.PI/180), radius: 1.7,
+    bpCount: 10, strandColorA: 0x3a6bd4, strandColorB: 0xc06020, baseOffset: 0
+  });
+
+  // ── B-form renderer ──
+  miniRendererB = new THREE.WebGLRenderer({ canvas: canvB, antialias: true, alpha: true });
+  miniRendererB.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  miniRendererB.setSize(110, 150);
+  miniSceneB = new THREE.Scene();
+  miniSceneB.background = new THREE.Color(0x0a0e14);
+  addLights(miniSceneB);
+  miniCamB = new THREE.PerspectiveCamera(40, 110/150, 0.1, 100);
+  miniCamB.position.set(7, 2, 7);
+  miniCamB.lookAt(0, 0, 0);
+  // B-form: narrower, taller, 10 bp/turn, larger rise, bases perpendicular (no groove offset)
+  miniGroupB = buildReferenceHelix(miniSceneB, {
+    rise: 1.20, twist: (36.0*Math.PI/180), radius: 1.0,
+    bpCount: 10, strandColorA: 0x3a6bd4, strandColorB: 0xc06020, baseOffset: 0
+  });
+}
+
+function renderMini() {
+  if (miniRendererA && miniSceneA) miniRendererA.render(miniSceneA, miniCamA);
+  if (miniRendererB && miniSceneB) miniRendererB.render(miniSceneB, miniCamB);
+}
+
+
+// ── Custom context menu ──
+function onContextMenu(e) {
+  e.preventDefault();
+  const menu = document.getElementById('ctx-menu');
+  // Position near cursor, keeping within window bounds
+  const mx = Math.min(e.clientX, window.innerWidth  - 200);
+  const my = Math.min(e.clientY, window.innerHeight - 120);
+  menu.style.left = mx + 'px';
+  menu.style.top  = my + 'px';
+  menu.classList.add('show');
+  // Close on next click anywhere
+  setTimeout(() => document.addEventListener('click', closeCtxMenu, { once: true }), 0);
+}
+
+function closeCtxMenu() {
+  document.getElementById('ctx-menu').classList.remove('show');
+}
+
+function getCanvasDataURL() {
+  // Force a fresh render then grab pixels synchronously
+  renderer.render(scene, camera);
+  return document.getElementById('three-canvas').toDataURL('image/png');
+}
+
+function dataURLtoBlob(dataURL) {
+  const parts = dataURL.split(',');
+  const byteStr = atob(parts[1]);
+  const arr = new Uint8Array(byteStr.length);
+  for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+  return new Blob([arr], { type: 'image/png' });
+}
+
+function copyCanvasImage() {
+  closeCtxMenu();
+  // Grab the data URL synchronously while still in the user-gesture window
+  const dataURL = getCanvasDataURL();
+  const blob = dataURLtoBlob(dataURL);
+  // Pass a pre-resolved Promise — Chrome requires ClipboardItem to receive
+  // a Promise, but it must be constructed synchronously within the gesture
+  navigator.clipboard.write([
+    new ClipboardItem({ 'image/png': Promise.resolve(blob) })
+  ]).then(() => {
+    showCopyFeedback();
+  }).catch(err => {
+    console.warn('Clipboard write failed:', err);
+    // Fallback: trigger download instead
+    triggerDownload(dataURL);
+    showToast('Clipboard blocked — image downloaded instead', '#d29922');
+  });
+}
+
+function downloadCanvasImage() {
+  closeCtxMenu();
+  triggerDownload(getCanvasDataURL());
+}
+
+function triggerDownload(dataURL) {
+  const a = document.createElement('a');
+  a.download = 'sirna_structure.png';
+  a.href = dataURL;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function showCopyFeedback() {
+  showToast('✓  Image copied — paste into PowerPoint with Ctrl+V', '#3fb950');
+}
+
+function showToast(msg, color) {
+  let toast = document.getElementById('copy-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copy-toast';
+    toast.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);' +
+      'font-size:0.78rem;font-weight:600;padding:7px 18px;border-radius:20px;' +
+      'z-index:9999;pointer-events:none;transition:opacity 0.5s;backdrop-filter:blur(4px);' +
+      'color:#000;opacity:0;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.background = color || '#3fb950';
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 2800);
+}
+
+// ── Input validation ──
+['antisense','mrna'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', function(){
+    const err = document.getElementById('err-'+id);
+    if (this.value && !validate(this.value)) {
+      this.classList.add('error'); err.classList.add('show');
+    } else {
+      this.classList.remove('error'); err.classList.remove('show');
+    }
+  });
+});
+
+// Init
+initThree();
+initMiniRenderers();
+renderMini();
+</script>
+</body>
+</html>
